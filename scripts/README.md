@@ -1,14 +1,16 @@
 # Release & notarization scripts
 
-Scripts for building a **Developer ID–signed** macOS build of **Canvas Library** (Xcode project/target: `CanvasLibrary`, legacy `TSXPretty` still supported) for distribution outside the Mac App Store, then optionally notarizing with Apple.
+Scripts for building a **Developer ID–signed** macOS build of **Canvas Library** for distribution outside the Mac App Store, then optionally notarizing with Apple.
+
+These are **maintainer-oriented**. Forks should substitute their own team, identities, and Apple ID.
 
 ## Prerequisites
 
 - Xcode with command-line tools
-- Signing identities in the login keychain:
-  - **Apple Development: ryan@loechner.com (C8ZK9AKGDJ)** — local Debug
-  - **Developer ID Application: Ryan Loechner (44N969GC55)** — Release distribution
-- Team ID: `44N969GC55`
+- Signing identities in the login keychain (examples for this repo’s maintainer):
+  - **Apple Development** — local Debug
+  - **Developer ID Application** — Release distribution
+- Your Apple Developer **Team ID**
 - For notarization: Apple ID + [app-specific password](https://appleid.apple.com) (or a stored `notarytool` profile)
 
 **Do not put Apple ID passwords, app-specific passwords, or API keys in this repo.** Use environment variables or Keychain profiles only.
@@ -33,7 +35,7 @@ Artifacts land in **`dist/`** (gitignored). Intermediate build products go under
 
 ## How to run
 
-From the repo root (`TSXPretty/`):
+From the repo root:
 
 ```bash
 # 1) Build, sign, package
@@ -45,16 +47,7 @@ chmod +x scripts/build-release.sh scripts/notarize.sh   # once
 ./scripts/build-release.sh --dmg
 ```
 
-Project detection order:
-
-1. `CanvasLibrary.xcodeproj` (if present)
-2. `TSXPretty.xcodeproj` (current)
-
-Signing identity used by the release script:
-
-```text
-Developer ID Application: Ryan Loechner (44N969GC55)
-```
+Uses `CanvasLibrary.xcodeproj` when present. Adjust `DEVELOPMENT_TEAM` / signing identity in the scripts or Xcode project for your own developer account.
 
 ### Notarization
 

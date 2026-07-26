@@ -110,6 +110,7 @@ struct CanvasLibraryApp: App {
             kind: kind,
             projectName: url.deletingLastPathComponent().lastPathComponent,
             fileName: url.lastPathComponent,
+            relativePath: url.lastPathComponent,
             modifiedAt: Date(),
             fileSize: 0
         )
@@ -164,6 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             kind: kind,
             projectName: url.deletingLastPathComponent().lastPathComponent,
             fileName: url.lastPathComponent,
+            relativePath: url.lastPathComponent,
             modifiedAt: Date(),
             fileSize: 0
         )

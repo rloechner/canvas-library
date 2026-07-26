@@ -53,6 +53,10 @@ final class AppModel: ObservableObject {
     @Published var expandedProjects: Set<String> = [] {
         didSet { persistExpandedProjects() }
     }
+    /// Folder expansion keys: `"projectName//relative/folder/path"`.
+    @Published var expandedFolders: Set<String> = [] {
+        didSet { persistExpandedFolders() }
+    }
 
     private let scanner = LibraryScanner()
     private let formatter = TSXFormatter()
@@ -63,6 +67,7 @@ final class AppModel: ObservableObject {
     private let recentKey = "canvaslibrary.recentIDs"
     private let extraSpacesKey = "canvaslibrary.extraSpaces"
     private let expandedProjectsKey = "canvaslibrary.expandedProjects"
+    private let expandedFoldersKey = "canvaslibrary.expandedFolders"
     private var didInitializeExpandedProjects = false
 
     /// Documents matching kind filter + search, before project grouping.
@@ -78,49 +83,66 @@ final class AppModel: ObservableObject {
             return doc.fileName.lowercased().contains(q)
                 || doc.displayTitle.lowercased().contains(q)
                 || doc.projectName.lowercased().contains(q)
+                || doc.relativePath.lowercased().contains(q)
+                || doc.folderPath.lowercased().contains(q)
         }
     }
 
-    /// Project names in sidebar display order (recent opens, else max modifiedAt, then A–Z).
+    /// Project names in sidebar display order — stable A–Z (no “recent project jumps”).
     var orderedProjectNames: [String] {
-        let grouped = Dictionary(grouping: matchingDocuments, by: \.projectName)
-        let recentRank: [String: Int] = {
-            var rank: [String: Int] = [:]
-            for (index, id) in recentIDs.enumerated() {
-                guard let doc = documents.first(where: { $0.id == id }) else { continue }
-                if rank[doc.projectName] == nil {
-                    rank[doc.projectName] = index
-                }
-            }
-            return rank
-        }()
-
-        return grouped.keys.sorted { a, b in
-            let rankA = recentRank[a] ?? Int.max
-            let rankB = recentRank[b] ?? Int.max
-            if rankA != rankB { return rankA < rankB }
-
-            let maxA = grouped[a]?.map(\.modifiedAt).max() ?? .distantPast
-            let maxB = grouped[b]?.map(\.modifiedAt).max() ?? .distantPast
-            if maxA != maxB { return maxA > maxB }
-
-            return a.localizedCaseInsensitiveCompare(b) == .orderedAscending
+        let names = Set(matchingDocuments.map(\.projectName))
+        return names.sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
         }
     }
 
-    /// Filtered documents in a project, sorted by modifiedAt desc then title A–Z.
+    /// Filtered documents in a project (unsorted raw match set for tree building).
     func documents(inProject projectName: String) -> [WorkingDocument] {
-        matchingDocuments
-            .filter { $0.projectName == projectName }
-            .sorted { a, b in
-                if a.modifiedAt != b.modifiedAt { return a.modifiedAt > b.modifiedAt }
-                return a.displayTitle.localizedCaseInsensitiveCompare(b.displayTitle) == .orderedAscending
-            }
+        matchingDocuments.filter { $0.projectName == projectName }
     }
 
-    /// Flatten of project-major order — used by goNext/goPrev and list identity.
+    /// Finder-like tree for a project: folders (only those with matches) then files, A–Z.
+    func libraryTree(for projectName: String) -> [LibraryTreeNode] {
+        LibraryTreeBuilder.build(docs: documents(inProject: projectName), projectName: projectName)
+    }
+
+    /// Flatten of project-major, tree-order — used by goNext/goPrev.
     var filteredDocuments: [WorkingDocument] {
-        orderedProjectNames.flatMap { documents(inProject: $0) }
+        orderedProjectNames.flatMap { project in
+            flattenTree(libraryTree(for: project))
+        }
+    }
+
+    private func flattenTree(_ nodes: [LibraryTreeNode]) -> [WorkingDocument] {
+        var result: [WorkingDocument] = []
+        for node in nodes {
+            switch node {
+            case .folder(_, _, _, let children, _):
+                result.append(contentsOf: flattenTree(children))
+            case .file(let doc):
+                result.append(doc)
+            }
+        }
+        return result
+    }
+
+    static func folderExpansionKey(project: String, folderPath: String) -> String {
+        "\(project)//\(folderPath)"
+    }
+
+    func isFolderExpanded(project: String, folderPath: String) -> Bool {
+        if !searchText.isEmpty { return true }
+        return expandedFolders.contains(Self.folderExpansionKey(project: project, folderPath: folderPath))
+    }
+
+    func setFolderExpanded(project: String, folderPath: String, expanded: Bool) {
+        guard searchText.isEmpty else { return }
+        let key = Self.folderExpansionKey(project: project, folderPath: folderPath)
+        if expanded {
+            expandedFolders.insert(key)
+        } else {
+            expandedFolders.remove(key)
+        }
     }
 
     var selectedIndex: Int? {
@@ -144,20 +166,34 @@ final class AppModel: ObservableObject {
             expandedProjects = Set(saved)
             didInitializeExpandedProjects = true
         }
+        if let savedFolders = defaults.stringArray(forKey: expandedFoldersKey) {
+            expandedFolders = Set(savedFolders)
+        }
         loadSpaces()
         refreshLibrary()
     }
 
-    /// Ensure the project that owns the current selection is expanded.
+    /// Ensure the project (and ancestor folders) that own the current selection are expanded.
     func expandProjectForSelection() {
         guard let selectedID,
               let doc = documents.first(where: { $0.id == selectedID })
                 ?? filteredDocuments.first(where: { $0.id == selectedID })
         else { return }
-        expandedProjects.insert(doc.projectName)
+        expandAncestors(of: doc)
     }
 
-    /// After library scan: first launch expands top project only; always expand selection's project.
+    /// Expand project + every parent folder leading to `doc`.
+    func expandAncestors(of doc: WorkingDocument) {
+        expandedProjects.insert(doc.projectName)
+        var path = doc.folderPath
+        while !path.isEmpty {
+            expandedFolders.insert(Self.folderExpansionKey(project: doc.projectName, folderPath: path))
+            path = (path as NSString).deletingLastPathComponent
+            if path == "." { path = "" }
+        }
+    }
+
+    /// After library scan: first launch expands top project only; always expand selection's path.
     func ensureExpandedProjectsAfterScan() {
         let names = orderedProjectNames
         guard !names.isEmpty else { return }
@@ -172,6 +208,10 @@ final class AppModel: ObservableObject {
 
     private func persistExpandedProjects() {
         defaults.set(Array(expandedProjects).sorted(), forKey: expandedProjectsKey)
+    }
+
+    private func persistExpandedFolders() {
+        defaults.set(Array(expandedFolders).sorted(), forKey: expandedFoldersKey)
     }
 
     // MARK: - Spaces
@@ -243,7 +283,7 @@ final class AppModel: ObservableObject {
 
     func select(_ doc: WorkingDocument) {
         selectedID = doc.id
-        expandedProjects.insert(doc.projectName)
+        expandAncestors(of: doc)
         open(doc)
     }
 
@@ -320,6 +360,7 @@ final class AppModel: ObservableObject {
             kind: kind,
             projectName: url.deletingLastPathComponent().lastPathComponent,
             fileName: url.lastPathComponent,
+            relativePath: url.lastPathComponent,
             modifiedAt: (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date(),
             fileSize: Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
         )

@@ -29,7 +29,7 @@ struct LibraryScanner {
         }
     }
 
-    /// ~/.cursor/projects/*/canvases/*.{canvas.tsx,md}
+    /// ~/.cursor/projects/*/canvases/**/*.{canvas.tsx,md}
     private func scanCursorProjectsRoot(_ root: URL) -> [WorkingDocument] {
         guard fileManager.fileExists(atPath: root.path) else { return [] }
 
@@ -54,19 +54,42 @@ struct LibraryScanner {
         return results
     }
 
+    /// Recursively finds .canvas.tsx / .md under `dir`, preserving relative paths for the sidebar tree.
     private func scanDirectory(_ dir: URL, projectName: String) -> [WorkingDocument] {
-        guard let items = try? fileManager.contentsOfDirectory(
-            at: dir,
-            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey],
+        let root = dir.standardizedFileURL
+        guard fileManager.fileExists(atPath: root.path) else { return [] }
+
+        guard let enumerator = fileManager.enumerator(
+            at: root,
+            includingPropertiesForKeys: [
+                .contentModificationDateKey,
+                .fileSizeKey,
+                .isRegularFileKey,
+                .isDirectoryKey,
+            ],
             options: [.skipsHiddenFiles]
         ) else { return [] }
 
         var docs: [WorkingDocument] = []
-        for url in items {
+        let rootPath = root.path
+
+        for case let item as URL in enumerator {
+            let url = item.standardizedFileURL
+            let values = try? url.resourceValues(forKeys: [
+                .isRegularFileKey,
+                .isDirectoryKey,
+                .contentModificationDateKey,
+                .fileSizeKey,
+            ])
+
+            if values?.isDirectory == true { continue }
+            guard values?.isRegularFile != false else { continue }
             guard let kind = kind(for: url) else { continue }
-            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+
+            let relativePath = relativePath(of: url.path, under: rootPath)
             let modified = values?.contentModificationDate ?? Date.distantPast
             let size = Int64(values?.fileSize ?? 0)
+
             docs.append(
                 WorkingDocument(
                     id: url.path,
@@ -74,12 +97,22 @@ struct LibraryScanner {
                     kind: kind,
                     projectName: projectName,
                     fileName: url.lastPathComponent,
+                    relativePath: relativePath,
                     modifiedAt: modified,
                     fileSize: size
                 )
             )
         }
         return docs
+    }
+
+    private func relativePath(of fullPath: String, under rootPath: String) -> String {
+        if fullPath == rootPath { return "" }
+        let prefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        if fullPath.hasPrefix(prefix) {
+            return String(fullPath.dropFirst(prefix.count))
+        }
+        return (fullPath as NSString).lastPathComponent
     }
 
     private func kind(for url: URL) -> DocumentKind? {

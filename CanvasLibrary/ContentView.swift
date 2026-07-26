@@ -414,6 +414,7 @@ struct ContentView: View {
                                 kind: kind,
                                 projectName: url.deletingLastPathComponent().lastPathComponent,
                                 fileName: url.lastPathComponent,
+                                relativePath: url.lastPathComponent,
                                 modifiedAt: Date(),
                                 fileSize: 0
                             )

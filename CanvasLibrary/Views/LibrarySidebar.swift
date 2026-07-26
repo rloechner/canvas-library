@@ -38,7 +38,7 @@ struct LibrarySidebar: View {
         }
         .onChange(of: app.searchText) { _, query in
             guard !query.isEmpty else { return }
-            // While searching, always expand projects that have matches.
+            // While searching, force-expand projects that have matches.
             var next = app.expandedProjects
             next.formUnion(app.orderedProjectNames)
             app.expandedProjects = next
@@ -99,14 +99,18 @@ struct LibrarySidebar: View {
     }
 }
 
-// MARK: - Project section
+// MARK: - Project section (root of Finder tree)
 
 private struct ProjectSection: View {
     @EnvironmentObject private var app: AppModel
     let projectName: String
 
-    private var docs: [WorkingDocument] {
-        app.documents(inProject: projectName)
+    private var tree: [LibraryTreeNode] {
+        app.libraryTree(for: projectName)
+    }
+
+    private var fileCount: Int {
+        tree.reduce(0) { $0 + $1.fileCount }
     }
 
     private var isExpandedBinding: Binding<Bool> {
@@ -116,7 +120,6 @@ private struct ProjectSection: View {
                 return app.expandedProjects.contains(projectName)
             },
             set: { expanded in
-                // Don't persist collapse while search is forcing expansion.
                 guard app.searchText.isEmpty else { return }
                 if expanded {
                     app.expandedProjects.insert(projectName)
@@ -129,22 +132,91 @@ private struct ProjectSection: View {
 
     var body: some View {
         DisclosureGroup(isExpanded: isExpandedBinding) {
-            ForEach(docs) { doc in
-                DocumentRow(doc: doc)
-                    .tag(doc.id)
+            ForEach(tree) { node in
+                TreeNodeView(node: node, projectName: projectName)
             }
         } label: {
             HStack(spacing: 6) {
+                Image(systemName: "folder.fill")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .frame(width: 14)
                 Text(projectName)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                Text("\(docs.count)")
+                Text("\(fileCount)")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .monospacedDigit()
             }
         }
+    }
+}
+
+// MARK: - Recursive folder / file nodes
+
+private struct TreeNodeView: View {
+    @EnvironmentObject private var app: AppModel
+    let node: LibraryTreeNode
+    let projectName: String
+
+    var body: some View {
+        switch node {
+        case .folder(let id, let name, let relativePath, let children, let fileCount):
+            FolderSection(
+                id: id,
+                name: name,
+                relativePath: relativePath,
+                children: children,
+                fileCount: fileCount,
+                projectName: projectName
+            )
+        case .file(let doc):
+            DocumentRow(doc: doc)
+                .tag(doc.id)
+        }
+    }
+}
+
+private struct FolderSection: View {
+    @EnvironmentObject private var app: AppModel
+    let id: String
+    let name: String
+    let relativePath: String
+    let children: [LibraryTreeNode]
+    let fileCount: Int
+    let projectName: String
+
+    private var isExpandedBinding: Binding<Bool> {
+        Binding(
+            get: { app.isFolderExpanded(project: projectName, folderPath: relativePath) },
+            set: { app.setFolderExpanded(project: projectName, folderPath: relativePath, expanded: $0) }
+        )
+    }
+
+    var body: some View {
+        DisclosureGroup(isExpanded: isExpandedBinding) {
+            ForEach(children) { child in
+                TreeNodeView(node: child, projectName: projectName)
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "folder.fill")
+                    .foregroundStyle(Color.accentColor.opacity(0.85))
+                    .font(.caption)
+                    .frame(width: 14)
+                Text(name)
+                    .font(.body)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text("\(fileCount)")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .monospacedDigit()
+            }
+        }
+        .id(id)
     }
 }
 
@@ -178,6 +250,6 @@ private struct DocumentRow: View {
                 .lineLimit(1)
         }
         .padding(.vertical, 1)
-        .help(doc.urlPath)
+        .help(doc.relativePath == doc.fileName ? doc.urlPath : "\(doc.projectName)/\(doc.relativePath)")
     }
 }
