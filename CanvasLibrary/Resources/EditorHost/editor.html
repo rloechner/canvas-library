@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body, #container {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      overflow: hidden;
+      background: transparent;
+    }
+    #status {
+      display: none;
+      font: 13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
+      padding: 24px;
+      color: #888;
+    }
+    #status.err { display: block; color: #b00020; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div id="container"></div>
+  <div id="status"></div>
+  <script>
+    // Monaco AMD loader (relative to this file)
+    var require = {
+      paths: { vs: "monaco/vs" },
+      "vs/nls": { availableLanguages: { "*": "" } }
+    };
+  </script>
+  <script src="monaco/vs/loader.js"></script>
+  <script>
+    (function () {
+      const status = document.getElementById("status");
+      function post(name, payload) {
+        try {
+          window.webkit?.messageHandlers?.[name]?.postMessage(payload ?? {});
+        } catch (e) {}
+      }
+      function fail(msg) {
+        status.className = "err";
+        status.textContent = msg;
+        post("editorError", String(msg));
+      }
+
+      let editor = null;
+      let applying = false;
+      let currentTheme = "vs";
+
+      window.CanvasLibraryEditor = {
+        setValue(text) {
+          if (!editor) return;
+          applying = true;
+          const pos = editor.getPosition();
+          editor.setValue(text ?? "");
+          if (pos) editor.setPosition(pos);
+          applying = false;
+        },
+        getValue() {
+          return editor ? editor.getValue() : "";
+        },
+        setTheme(dark) {
+          currentTheme = dark ? "vs-dark" : "vs";
+          if (window.monaco) monaco.editor.setTheme(currentTheme);
+        },
+        setFontSize(size) {
+          if (editor) editor.updateOptions({ fontSize: Number(size) || 13 });
+        },
+        setLanguage(lang) {
+          if (!editor || !window.monaco) return;
+          const model = editor.getModel();
+          if (model) monaco.editor.setModelLanguage(model, lang || "typescript");
+        },
+        setReadOnly(ro) {
+          if (editor) editor.updateOptions({ readOnly: !!ro });
+        },
+        focus() {
+          editor?.focus();
+        },
+        layout() {
+          editor?.layout();
+        }
+      };
+
+      require(["vs/editor/editor.main"], function () {
+        try {
+          // TSX-friendly defaults
+          monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+            target: monaco.languages.typescript.ScriptTarget.ESNext,
+            allowNonTsExtensions: true,
+            moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+            module: monaco.languages.typescript.ModuleKind.ESNext,
+            noEmit: true,
+            esModuleInterop: true,
+            jsx: monaco.languages.typescript.JsxEmit.React,
+            allowJs: true,
+            typeRoots: ["node_modules/@types"]
+          });
+          monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+            noSemanticValidation: true,
+            noSyntaxValidation: false
+          });
+
+          editor = monaco.editor.create(document.getElementById("container"), {
+            value: "",
+            language: "typescript",
+            theme: currentTheme,
+            automaticLayout: true,
+            minimap: { enabled: false },
+            fontSize: 13,
+            fontFamily: 'SFMono-Regular, ui-monospace, Menlo, Monaco, "Courier New", monospace',
+            fontLigatures: false,
+            tabSize: 2,
+            insertSpaces: true,
+            wordWrap: "on",
+            lineNumbers: "on",
+            renderLineHighlight: "line",
+            scrollBeyondLastLine: false,
+            smoothScrolling: true,
+            cursorBlinking: "smooth",
+            padding: { top: 12, bottom: 12 },
+            bracketPairColorization: { enabled: true },
+            guides: { indentation: true, bracketPairs: true },
+            quickSuggestions: true,
+            suggestOnTriggerCharacters: true,
+            acceptSuggestionOnEnter: "on",
+            formatOnPaste: false,
+            readOnly: false
+          });
+
+          editor.onDidChangeModelContent(function () {
+            if (applying) return;
+            post("editorChange", editor.getValue());
+          });
+
+          // Cmd/Ctrl+S is handled natively; still notify
+          editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function () {
+            post("editorSave", editor.getValue());
+          });
+
+          post("editorReady", "ok");
+        } catch (e) {
+          fail(e && e.stack ? e.stack : String(e));
+        }
+      }, function (err) {
+        fail("Failed to load Monaco editor.\n" + (err ? String(err) : ""));
+      });
+
+      window.addEventListener("resize", function () {
+        editor?.layout();
+      });
+    })();
+  </script>
+</body>
+</html>

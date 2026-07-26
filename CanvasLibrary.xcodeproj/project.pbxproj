@@ -1,0 +1,464 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B01TSXPRETTYAPP000000001 /* CanvasLibraryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D62B1219DC4B12B25E3E21 /* CanvasLibraryApp.swift */; };
+		B02CONTENTVIEW0000000001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82BC348BF3EB41FDA9FDD577 /* ContentView.swift */; };
+		B03APPMODEL0000000000001 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E3EC0A98B5741638AC321FB /* AppModel.swift */; };
+		B04OUTLINENODE0000000001 /* OutlineNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 670E51F48AE74B3EBFAE6414 /* OutlineNode.swift */; };
+		B05OUTLINEPARSER00000001 /* TSXOutlineParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EB4784F31D74E64AC9B1E3B /* TSXOutlineParser.swift */; };
+		B06FORMATTER000000000001 /* TSXFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88529ADCD6B14E428A2635B5 /* TSXFormatter.swift */; };
+		B07HIGHLIGHTER0000000001 /* TSXHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D85D27200094423DB57E8635 /* TSXHighlighter.swift */; };
+		B08CODEVIEW0000000000001 /* CodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB9A08C8DAEF4FA99A0974CF /* CodeView.swift */; };
+		B09OUTLINESIDEBAR0000001 /* OutlineSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2A8186C99424FA99E61C294 /* OutlineSidebar.swift */; };
+		B10EMPTYSTATE00000000001 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB9EE3C4A9C4058B8E386CD /* EmptyStateView.swift */; };
+		B11SETTINGSVIEW000000001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE8CF10FAC6F402EBEA99C3A /* SettingsView.swift */; };
+		B12ASSETS000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3AF63DBE1E5D40A88AEBAE85 /* Assets.xcassets */; };
+		B13CANVASCOMPILER0000001 /* CanvasCompiler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A1C0A1C0A14B12B25E3E21 /* CanvasCompiler.swift */; };
+		B14CANVASPREVIEW000000001 /* CanvasPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A2C0A2C0A24FA99A0974CF /* CanvasPreviewView.swift */; };
+		B15CANVASHOST000000000001 /* CanvasHost in Resources */ = {isa = PBXBuildFile; fileRef = C0A3C0A3C0A340A88AEBAE85 /* CanvasHost */; };
+		B16SOURCECODEVIEW0000001 /* SourceCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A5SOURCECODEVIEW000001 /* SourceCodeView.swift */; };
+		B21WORKINGDOC0000000001 /* WorkingDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B1WORKINGDOC000000001 /* WorkingDocument.swift */; };
+		B22LIBSCAN0000000000001 /* LibraryScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B2LIBSCAN000000000001 /* LibraryScanner.swift */; };
+		B23MDRENDER000000000001 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B3MDRENDER00000000001 /* MarkdownRenderer.swift */; };
+		B24MDPREVIEW00000000001 /* MarkdownPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B4MDPREVIEW0000000001 /* MarkdownPreviewView.swift */; };
+		B25LIBSIDEBAR0000000001 /* LibrarySidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B5LIBSIDEBAR000000001 /* LibrarySidebar.swift */; };
+		B26MONACOEDITOR000000001 /* MonacoEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B6MONACOEDITOR000000001 /* MonacoEditorView.swift */; };
+		B27EDITORHOST00000000001 /* EditorHost in Resources */ = {isa = PBXBuildFile; fileRef = C0B7EDITORHOST0000000001 /* EditorHost */; };
+		B28SOURCEREWRITE00000001 /* SourceTextRewriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B8SOURCEREWRITE00000001 /* SourceTextRewriter.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		09D62B1219DC4B12B25E3E21 /* CanvasLibraryApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasLibraryApp.swift; sourceTree = "<group>"; };
+		82BC348BF3EB41FDA9FDD577 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		6E3EC0A98B5741638AC321FB /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		670E51F48AE74B3EBFAE6414 /* OutlineNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutlineNode.swift; sourceTree = "<group>"; };
+		2EB4784F31D74E64AC9B1E3B /* TSXOutlineParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TSXOutlineParser.swift; sourceTree = "<group>"; };
+		88529ADCD6B14E428A2635B5 /* TSXFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TSXFormatter.swift; sourceTree = "<group>"; };
+		D85D27200094423DB57E8635 /* TSXHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TSXHighlighter.swift; sourceTree = "<group>"; };
+		EB9A08C8DAEF4FA99A0974CF /* CodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeView.swift; sourceTree = "<group>"; };
+		E2A8186C99424FA99E61C294 /* OutlineSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutlineSidebar.swift; sourceTree = "<group>"; };
+		CBB9EE3C4A9C4058B8E386CD /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
+		EE8CF10FAC6F402EBEA99C3A /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		3AF63DBE1E5D40A88AEBAE85 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		4419E32935F6473C97CC0D16 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		C0A1C0A1C0A14B12B25E3E21 /* CanvasCompiler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasCompiler.swift; sourceTree = "<group>"; };
+		C0A2C0A2C0A24FA99A0974CF /* CanvasPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasPreviewView.swift; sourceTree = "<group>"; };
+		C0A3C0A3C0A340A88AEBAE85 /* CanvasHost */ = {isa = PBXFileReference; lastKnownFileType = folder; name = CanvasHost; path = Resources/CanvasHost; sourceTree = "<group>"; };
+		F2A74AB4C69047768091EBAF /* CanvasLibrary.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CanvasLibrary.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0A5SOURCECODEVIEW000001 /* SourceCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceCodeView.swift; sourceTree = "<group>"; };
+		C0B1WORKINGDOC000000001 /* WorkingDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkingDocument.swift; sourceTree = "<group>"; };
+		C0B2LIBSCAN000000000001 /* LibraryScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryScanner.swift; sourceTree = "<group>"; };
+		C0B3MDRENDER00000000001 /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
+		C0B4MDPREVIEW0000000001 /* MarkdownPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownPreviewView.swift; sourceTree = "<group>"; };
+		C0B5LIBSIDEBAR000000001 /* LibrarySidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySidebar.swift; sourceTree = "<group>"; };
+		C0B6MONACOEDITOR000000001 /* MonacoEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonacoEditorView.swift; sourceTree = "<group>"; };
+		C0B7EDITORHOST0000000001 /* EditorHost */ = {isa = PBXFileReference; lastKnownFileType = folder; name = EditorHost; path = Resources/EditorHost; sourceTree = "<group>"; };
+		C0B8SOURCEREWRITE00000001 /* SourceTextRewriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceTextRewriter.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		34EC37981A5E4E3E84B05E91 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		9FC493E7CDD94304BA3ECC01 = {
+			isa = PBXGroup;
+			children = (
+				7331B1A80B3044238396302A /* CanvasLibrary */,
+				DB92B2607C264EF390CD9A6D /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		DB92B2607C264EF390CD9A6D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F2A74AB4C69047768091EBAF /* CanvasLibrary.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		7331B1A80B3044238396302A /* CanvasLibrary */ = {
+			isa = PBXGroup;
+			children = (
+				09D62B1219DC4B12B25E3E21 /* CanvasLibraryApp.swift */,
+				82BC348BF3EB41FDA9FDD577 /* ContentView.swift */,
+				1AD59C4794D34C38817BC7FB /* Models */,
+				A579CC55089C4B5A9E3E220E /* Services */,
+				7A0DA53A3F4746BD8909456B /* Views */,
+				C0A3C0A3C0A340A88AEBAE85 /* CanvasHost */,
+				C0B7EDITORHOST0000000001 /* EditorHost */,
+				3AF63DBE1E5D40A88AEBAE85 /* Assets.xcassets */,
+				4419E32935F6473C97CC0D16 /* Info.plist */,
+			);
+			path = CanvasLibrary;
+			sourceTree = "<group>";
+		};
+		1AD59C4794D34C38817BC7FB /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				6E3EC0A98B5741638AC321FB /* AppModel.swift */,
+				670E51F48AE74B3EBFAE6414 /* OutlineNode.swift */,
+				C0B1WORKINGDOC000000001 /* WorkingDocument.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		A579CC55089C4B5A9E3E220E /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				2EB4784F31D74E64AC9B1E3B /* TSXOutlineParser.swift */,
+				88529ADCD6B14E428A2635B5 /* TSXFormatter.swift */,
+				D85D27200094423DB57E8635 /* TSXHighlighter.swift */,
+				C0A1C0A1C0A14B12B25E3E21 /* CanvasCompiler.swift */,
+				C0B8SOURCEREWRITE00000001 /* SourceTextRewriter.swift */,
+				C0B3MDRENDER00000000001 /* MarkdownRenderer.swift */,
+				C0B2LIBSCAN000000000001 /* LibraryScanner.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		7A0DA53A3F4746BD8909456B /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				EB9A08C8DAEF4FA99A0974CF /* CodeView.swift */,
+				C0A5SOURCECODEVIEW000001 /* SourceCodeView.swift */,
+				C0B6MONACOEDITOR000000001 /* MonacoEditorView.swift */,
+				C0B5LIBSIDEBAR000000001 /* LibrarySidebar.swift */,
+				C0B4MDPREVIEW0000000001 /* MarkdownPreviewView.swift */,
+				C0A2C0A2C0A24FA99A0974CF /* CanvasPreviewView.swift */,
+				E2A8186C99424FA99E61C294 /* OutlineSidebar.swift */,
+				CBB9EE3C4A9C4058B8E386CD /* EmptyStateView.swift */,
+				EE8CF10FAC6F402EBEA99C3A /* SettingsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		C0A4STRIPXATTR0000000001 /* Strip xattrs for codesign */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Strip xattrs for codesign";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "APP=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}\"\nif [ -d \"$APP\" ]; then\n  /usr/bin/xattr -cr \"$APP\" 2>/dev/null || true\n  # FinderInfo / File Provider on the wrapper often survives -cr and breaks codesign\n  /usr/bin/xattr -d com.apple.FinderInfo \"$APP\" 2>/dev/null || true\n  /usr/bin/xattr -d 'com.apple.fileprovider.fpfs#P' \"$APP\" 2>/dev/null || true\n  /usr/bin/find \"$APP\" -name '._*' -delete 2>/dev/null || true\n  /usr/bin/find \"$APP\" -name '.DS_Store' -delete 2>/dev/null || true\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXNativeTarget section */
+		87086A9F4A6545AAAD46C937 /* CanvasLibrary */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0687D677EA0A4D05BC22E455 /* Build configuration list for PBXNativeTarget "CanvasLibrary" */;
+			buildPhases = (
+				2F4189D8E47E49868AA0C12F /* Sources */,
+				34EC37981A5E4E3E84B05E91 /* Frameworks */,
+				07C22C8CCB994B7482BEE57A /* Resources */,
+				C0A4STRIPXATTR0000000001 /* Strip xattrs for codesign */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CanvasLibrary;
+			productName = CanvasLibrary;
+			productReference = F2A74AB4C69047768091EBAF /* CanvasLibrary.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		2CA78113320A49899B442F58 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					87086A9F4A6545AAAD46C937 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = 34F09C8FD8DA4C61914C364A /* Build configuration list for PBXProject "CanvasLibrary" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 9FC493E7CDD94304BA3ECC01;
+			productRefGroup = DB92B2607C264EF390CD9A6D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				87086A9F4A6545AAAD46C937 /* CanvasLibrary */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		07C22C8CCB994B7482BEE57A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B12ASSETS000000000000001 /* Assets.xcassets in Resources */,
+				B15CANVASHOST000000000001 /* CanvasHost in Resources */,
+				B27EDITORHOST00000000001 /* EditorHost in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2F4189D8E47E49868AA0C12F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B01TSXPRETTYAPP000000001 /* CanvasLibraryApp.swift in Sources */,
+				B02CONTENTVIEW0000000001 /* ContentView.swift in Sources */,
+				B03APPMODEL0000000000001 /* AppModel.swift in Sources */,
+				B04OUTLINENODE0000000001 /* OutlineNode.swift in Sources */,
+				B05OUTLINEPARSER00000001 /* TSXOutlineParser.swift in Sources */,
+				B06FORMATTER000000000001 /* TSXFormatter.swift in Sources */,
+				B07HIGHLIGHTER0000000001 /* TSXHighlighter.swift in Sources */,
+				B08CODEVIEW0000000000001 /* CodeView.swift in Sources */,
+				B09OUTLINESIDEBAR0000001 /* OutlineSidebar.swift in Sources */,
+				B10EMPTYSTATE00000000001 /* EmptyStateView.swift in Sources */,
+				B11SETTINGSVIEW000000001 /* SettingsView.swift in Sources */,
+				B13CANVASCOMPILER0000001 /* CanvasCompiler.swift in Sources */,
+				B28SOURCEREWRITE00000001 /* SourceTextRewriter.swift in Sources */,
+				B14CANVASPREVIEW000000001 /* CanvasPreviewView.swift in Sources */,
+				B16SOURCECODEVIEW0000001 /* SourceCodeView.swift in Sources */,
+				B26MONACOEDITOR000000001 /* MonacoEditorView.swift in Sources */,
+				B25LIBSIDEBAR0000000001 /* LibrarySidebar.swift in Sources */,
+				B24MDPREVIEW00000000001 /* MarkdownPreviewView.swift in Sources */,
+				B23MDRENDER000000000001 /* MarkdownRenderer.swift in Sources */,
+				B22LIBSCAN0000000000001 /* LibraryScanner.swift in Sources */,
+				B21WORKINGDOC0000000001 /* WorkingDocument.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		31BEFB0A00974A9290B1B706 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		4B3D0EF2E4634A0BB1AEA5FA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		78F5312961884CEA8456D77B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 44N969GC55;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CanvasLibrary/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Canvas Library";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Ryan Loechner";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ryanloechner.canvaslibrary;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		80173B8020074A27A43C7B93 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				/* Outside-App-Store distribution; build-release.sh also forces this identity. */
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 44N969GC55;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CanvasLibrary/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Canvas Library";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Ryan Loechner";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ryanloechner.canvaslibrary;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		34F09C8FD8DA4C61914C364A /* Build configuration list for PBXProject "CanvasLibrary" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				31BEFB0A00974A9290B1B706 /* Debug */,
+				4B3D0EF2E4634A0BB1AEA5FA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0687D677EA0A4D05BC22E455 /* Build configuration list for PBXNativeTarget "CanvasLibrary" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				78F5312961884CEA8456D77B /* Debug */,
+				80173B8020074A27A43C7B93 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 2CA78113320A49899B442F58 /* Project object */;
+}

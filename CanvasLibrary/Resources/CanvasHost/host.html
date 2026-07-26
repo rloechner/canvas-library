@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Canvas Preview</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "cursor/canvas": "./canvas-shim.js"
+    }
+  }
+  </script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+    }
+    body {
+      background: #ffffff;
+      color: #1e1e1e;
+    }
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: #1e1e1e;
+        color: #e4e4e4;
+      }
+    }
+    #root {
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    #boot-error {
+      display: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      padding: 24px 32px;
+      color: #b00020;
+      white-space: pre-wrap;
+      line-height: 1.45;
+    }
+    #boot-error.visible { display: block; }
+  </style>
+  <script src="./design-mode.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <pre id="boot-error"></pre>
+  <script type="module">
+    const errorEl = document.getElementById("boot-error");
+    function showError(message) {
+      console.error(message);
+      errorEl.textContent = String(message);
+      errorEl.classList.add("visible");
+      try {
+        window.webkit?.messageHandlers?.canvasError?.postMessage(String(message));
+      } catch (_) {}
+    }
+
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    // Cursor runtime expects Map-like .get() on both data and state stores.
+    window.__cursorCanvas = {
+      reportError(err) {
+        showError(err instanceof Error ? err.message : String(err));
+      },
+      data: new Map(),
+      state: new Map([
+        [
+          "theme",
+          {
+            kind: prefersDark ? "dark" : "light",
+          },
+        ],
+      ]),
+    };
+
+    try {
+      const runtime = await import("./canvas-runtime.esm.js");
+      if (typeof runtime.mountCanvas !== "function") {
+        throw new Error("canvas-runtime.esm.js did not export mountCanvas");
+      }
+      await runtime.mountCanvas(new URL("./canvas-module.js", import.meta.url).href);
+      try {
+        window.webkit?.messageHandlers?.canvasReady?.postMessage("ok");
+      } catch (_) {}
+      // Re-apply design mode if host already requested it before mount finished
+      if (window.__csWantDesignMode && window.CanvasLibraryDesign) {
+        window.CanvasLibraryDesign.setEnabled(true);
+      }
+    } catch (err) {
+      showError(err instanceof Error ? (err.stack || err.message) : String(err));
+    }
+  </script>
+</body>
+</html>

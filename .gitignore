@@ -1,0 +1,46 @@
+# Xcode / macOS
+DerivedData/
+build/
+dist/
+*.xcuserstate
+xcuserdata/
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+.swiftpm/
+.vscode/
+.idea/
+
+# macOS junk
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Local screenshots / scratch
+preview-check*.png
+*.log
+
+# Secrets / env
+.env
+.env.*
+*.pem
+
+# Node (if tooling added later)
+node_modules/
+npm-debug.log*
+
+# Optional proprietary Cursor canvas runtime (do not redistribute in OSS)
+# App falls back to Cursor.app; see THIRD_PARTY.md
+CanvasLibrary/Resources/CanvasHost/canvas-runtime.esm.js
+CanvasLibrary/Resources/CanvasHost/canvas-runtime.esm.js.LICENSE.txt
