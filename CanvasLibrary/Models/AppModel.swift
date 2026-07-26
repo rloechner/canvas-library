@@ -49,6 +49,10 @@ final class AppModel: ObservableObject {
     @Published var editorReloadNonce = UUID()
 
     @Published private(set) var recentIDs: [String] = []
+    /// Project names currently expanded in the sidebar outline.
+    @Published var expandedProjects: Set<String> = [] {
+        didSet { persistExpandedProjects() }
+    }
 
     private let scanner = LibraryScanner()
     private let formatter = TSXFormatter()
@@ -58,8 +62,11 @@ final class AppModel: ObservableObject {
     private let defaults = UserDefaults.standard
     private let recentKey = "canvaslibrary.recentIDs"
     private let extraSpacesKey = "canvaslibrary.extraSpaces"
+    private let expandedProjectsKey = "canvaslibrary.expandedProjects"
+    private var didInitializeExpandedProjects = false
 
-    var filteredDocuments: [WorkingDocument] {
+    /// Documents matching kind filter + search, before project grouping.
+    private var matchingDocuments: [WorkingDocument] {
         documents.filter { doc in
             switch filter {
             case .all: break
@@ -72,6 +79,48 @@ final class AppModel: ObservableObject {
                 || doc.displayTitle.lowercased().contains(q)
                 || doc.projectName.lowercased().contains(q)
         }
+    }
+
+    /// Project names in sidebar display order (recent opens, else max modifiedAt, then A–Z).
+    var orderedProjectNames: [String] {
+        let grouped = Dictionary(grouping: matchingDocuments, by: \.projectName)
+        let recentRank: [String: Int] = {
+            var rank: [String: Int] = [:]
+            for (index, id) in recentIDs.enumerated() {
+                guard let doc = documents.first(where: { $0.id == id }) else { continue }
+                if rank[doc.projectName] == nil {
+                    rank[doc.projectName] = index
+                }
+            }
+            return rank
+        }()
+
+        return grouped.keys.sorted { a, b in
+            let rankA = recentRank[a] ?? Int.max
+            let rankB = recentRank[b] ?? Int.max
+            if rankA != rankB { return rankA < rankB }
+
+            let maxA = grouped[a]?.map(\.modifiedAt).max() ?? .distantPast
+            let maxB = grouped[b]?.map(\.modifiedAt).max() ?? .distantPast
+            if maxA != maxB { return maxA > maxB }
+
+            return a.localizedCaseInsensitiveCompare(b) == .orderedAscending
+        }
+    }
+
+    /// Filtered documents in a project, sorted by modifiedAt desc then title A–Z.
+    func documents(inProject projectName: String) -> [WorkingDocument] {
+        matchingDocuments
+            .filter { $0.projectName == projectName }
+            .sorted { a, b in
+                if a.modifiedAt != b.modifiedAt { return a.modifiedAt > b.modifiedAt }
+                return a.displayTitle.localizedCaseInsensitiveCompare(b.displayTitle) == .orderedAscending
+            }
+    }
+
+    /// Flatten of project-major order — used by goNext/goPrev and list identity.
+    var filteredDocuments: [WorkingDocument] {
+        orderedProjectNames.flatMap { documents(inProject: $0) }
     }
 
     var selectedIndex: Int? {
@@ -91,8 +140,38 @@ final class AppModel: ObservableObject {
 
     init() {
         recentIDs = defaults.stringArray(forKey: recentKey) ?? []
+        if let saved = defaults.stringArray(forKey: expandedProjectsKey) {
+            expandedProjects = Set(saved)
+            didInitializeExpandedProjects = true
+        }
         loadSpaces()
         refreshLibrary()
+    }
+
+    /// Ensure the project that owns the current selection is expanded.
+    func expandProjectForSelection() {
+        guard let selectedID,
+              let doc = documents.first(where: { $0.id == selectedID })
+                ?? filteredDocuments.first(where: { $0.id == selectedID })
+        else { return }
+        expandedProjects.insert(doc.projectName)
+    }
+
+    /// After library scan: first launch expands top project only; always expand selection's project.
+    func ensureExpandedProjectsAfterScan() {
+        let names = orderedProjectNames
+        guard !names.isEmpty else { return }
+
+        if !didInitializeExpandedProjects {
+            expandedProjects = [names[0]]
+            didInitializeExpandedProjects = true
+        }
+
+        expandProjectForSelection()
+    }
+
+    private func persistExpandedProjects() {
+        defaults.set(Array(expandedProjects).sorted(), forKey: expandedProjectsKey)
     }
 
     // MARK: - Spaces
@@ -157,12 +236,14 @@ final class AppModel: ObservableObject {
                     self.selectedID = nil
                     self.closeDocument()
                 }
+                self.ensureExpandedProjectsAfterScan()
             }
         }
     }
 
     func select(_ doc: WorkingDocument) {
         selectedID = doc.id
+        expandedProjects.insert(doc.projectName)
         open(doc)
     }
 

@@ -33,7 +33,7 @@ struct EmptyStateView: View {
                 Text("\(documentCount) documents in your library")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
-                Text("Select one in the sidebar, or open a file.")
+                Text("Select a document in the sidebar")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
