@@ -67,10 +67,8 @@ Prebuilt **macOS** builds are on the [Releases](https://github.com/rloechner/can
 
 1. Download **Canvas-Library-x.y.z.dmg**
 2. Open the disk image and drag **Canvas Library** into **Applications**
-3. First launch: if macOS says the app can’t be checked, right-click → **Open** (or System Settings → Privacy & Security → Open Anyway)
+3. Launch from Applications (Developer ID–signed and notarized by Apple)
 4. Install [Cursor](https://cursor.com) and **Node.js** so canvas preview can compile
-
-Developer ID–signed builds may still need a one-time Gatekeeper confirmation until notarized.
 
 ## Build from source
 
