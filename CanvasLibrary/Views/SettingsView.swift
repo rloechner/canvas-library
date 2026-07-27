@@ -1,6 +1,6 @@
 //
 //  SettingsView.swift
-//  CanvasSpace
+//  Canvas Library
 //
 
 import SwiftUI
@@ -8,34 +8,56 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var app: AppModel
 
+    private var appVersion: String {
+        let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        return "\(short) (\(build))"
+    }
+
     var body: some View {
         Form {
-            Section("Library spaces") {
+            Section {
                 ForEach(app.spaces) { space in
-                    HStack {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: space.recursiveCanvases ? "shippingbox" : "folder")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 18)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(space.name)
+                                .font(.body.weight(.medium))
                             Text(space.path)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                                .lineLimit(2)
                                 .truncationMode(.middle)
                         }
-                        Spacer()
+                        Spacer(minLength: 8)
                         if space.id != "cursor-all-canvases" {
-                            Button("Remove") {
+                            Button("Remove", role: .destructive) {
                                 app.removeSpace(space)
                             }
                             .buttonStyle(.borderless)
                         }
                     }
+                    .padding(.vertical, 2)
                 }
-                Button("Add Folder…") {
-                    app.addFolderSpace()
+
+                HStack {
+                    Button {
+                        app.addFolderSpace()
+                    } label: {
+                        Label("Add Folder…", systemImage: "folder.badge.plus")
+                    }
+                    Button {
+                        app.refreshLibrary()
+                    } label: {
+                        Label("Rescan", systemImage: "arrow.clockwise")
+                    }
                 }
-                Button("Rescan Library") {
-                    app.refreshLibrary()
-                }
+            } header: {
+                Text("Library spaces")
+            } footer: {
+                Text("By default Canvas Library scans ~/.cursor/projects/*/canvases. Add extra folders for docs outside Cursor.")
             }
 
             Section("Editor") {
@@ -43,20 +65,31 @@ struct SettingsView: View {
                 HStack {
                     Text("Font size")
                     Slider(value: $app.fontSize, in: 11...20, step: 1)
-                    Text("\(Int(app.fontSize))pt")
-                        .monospacedDigit()
-                        .frame(width: 40, alignment: .trailing)
+                    Text("\(Int(app.fontSize))")
+                        .font(.body.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, alignment: .trailing)
                 }
             }
 
             Section("About") {
-                Text("Canvas Library is a companion for Cursor working documents — canvases and markdown — so you can find, cycle, preview, and lightly edit them outside the IDE.")
+                LabeledContent("Version", value: appVersion)
+                LabeledContent("Bundle ID") {
+                    Text("com.ryanloechner.canvaslibrary")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                Link(destination: URL(string: "https://github.com/rloechner/canvas-library")!) {
+                    Label("GitHub repository", systemImage: "link")
+                }
+                Text("Independent open-source companion for Cursor canvases and markdown. Not affiliated with Anysphere.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 480, height: 380)
-        .padding()
+        .frame(width: 500, height: 420)
     }
 }

@@ -1,6 +1,6 @@
 //
 //  EmptyStateView.swift
-//  CanvasSpace
+//  Canvas Library
 //
 
 import SwiftUI
@@ -13,66 +13,137 @@ struct EmptyStateView: View {
     let isTargeted: Bool
 
     var body: some View {
-        VStack(spacing: 22) {
-            Image(systemName: "books.vertical")
-                .font(.system(size: 52, weight: .light))
-                .foregroundStyle(.secondary)
-                .symbolRenderingMode(.hierarchical)
+        ZStack {
+            // Soft ambient background
+            LinearGradient(
+                colors: [
+                    Color(nsColor: .windowBackgroundColor),
+                    Color.accentColor.opacity(0.04),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
 
-            VStack(spacing: 8) {
-                Text("Canvas Library")
-                    .font(.largeTitle.weight(.semibold))
-                Text("Your working Cursor documents — canvases and markdown — in their own space.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 440)
-            }
+            VStack(spacing: 0) {
+                Spacer(minLength: 24)
 
-            if documentCount > 0 {
-                Text("\(documentCount) documents in your library")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Text("Select a document in the sidebar")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
+                VStack(spacing: 28) {
+                    iconBadge
 
-            HStack(spacing: 12) {
-                Button(action: onOpen) {
-                    Label("Open File…", systemImage: "folder")
+                    VStack(spacing: 10) {
+                        Text("Canvas Library")
+                            .font(.system(size: 28, weight: .semibold, design: .rounded))
+                        Text("Your Cursor canvases and markdown — browse, preview, and lightly edit without hunting projects.")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 420)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if documentCount > 0 {
+                        libraryPill
+                    } else {
+                        Text("No documents yet — scan your Cursor projects or open a file.")
+                            .font(.subheadline)
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    HStack(spacing: 10) {
+                        Button(action: onOpen) {
+                            Label("Open File…", systemImage: "doc.badge.plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .keyboardShortcut("o", modifiers: .command)
+
+                        Button(action: onRefresh) {
+                            Label("Scan Library", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+
+                        Button(action: onAddFolder) {
+                            Label("Add Folder", systemImage: "folder.badge.plus")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                    }
+                    .padding(.top, 4)
+
+                    Text("Scans ~/.cursor/projects/*/canvases  ·  drop files here")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 8)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .keyboardShortcut("o", modifiers: .command)
-
-                Button(action: onRefresh) {
-                    Label("Scan Library", systemImage: "arrow.clockwise")
+                .padding(36)
+                .frame(maxWidth: 520)
+                .background {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(.regularMaterial)
+                        .shadow(color: .black.opacity(0.06), radius: 24, y: 8)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-
-                Button(action: onAddFolder) {
-                    Label("Add Folder", systemImage: "folder.badge.plus")
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(
+                            isTargeted ? Color.accentColor : Color.primary.opacity(0.06),
+                            lineWidth: isTargeted ? 2 : 1
+                        )
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-            }
-
-            Text("Scans ~/.cursor/projects/*/canvases  ·  drop files here")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-        .padding(40)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(
-                    isTargeted ? Color.accentColor : Color.primary.opacity(0.08),
-                    style: StrokeStyle(lineWidth: isTargeted ? 2 : 1, dash: isTargeted ? [] : [6, 4])
-                )
-                .padding(24)
                 .animation(.easeInOut(duration: 0.15), value: isTargeted)
-        )
+                .scaleEffect(isTargeted ? 1.01 : 1)
+                .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isTargeted)
+
+                Spacer(minLength: 24)
+            }
+            .padding(32)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var iconBadge: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.accentColor.opacity(0.22),
+                            Color.purple.opacity(0.14),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 88, height: 88)
+            Image(systemName: "books.vertical.fill")
+                .font(.system(size: 36, weight: .medium))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color.accentColor, Color.purple.opacity(0.9)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .symbolRenderingMode(.hierarchical)
+        }
+    }
+
+    private var libraryPill: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .imageScale(.small)
+            Text("\(documentCount) document\(documentCount == 1 ? "" : "s") ready")
+                .font(.subheadline.weight(.medium))
+            Text("·")
+                .foregroundStyle(.tertiary)
+            Text("Select one in the sidebar")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.primary.opacity(0.04), in: Capsule())
     }
 }

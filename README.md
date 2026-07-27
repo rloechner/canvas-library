@@ -61,7 +61,18 @@ First-party host files (`host.html`, `canvas-shim.js`, `design-mode.js`) always 
 
 > **Do not commit or redistribute** Cursor’s proprietary `canvas-runtime.esm.js`. It is gitignored on purpose. Install Cursor (or keep a private local copy for development). Details: [THIRD_PARTY.md](./THIRD_PARTY.md).
 
-## Quick start
+## Download
+
+Prebuilt **macOS** builds are on the [Releases](https://github.com/rloechner/canvas-library/releases) page (DMG).
+
+1. Download **Canvas-Library-x.y.z.dmg**
+2. Open the disk image and drag **Canvas Library** into **Applications**
+3. First launch: if macOS says the app can’t be checked, right-click → **Open** (or System Settings → Privacy & Security → Open Anyway)
+4. Install [Cursor](https://cursor.com) and **Node.js** so canvas preview can compile
+
+Developer ID–signed builds may still need a one-time Gatekeeper confirmation until notarized.
+
+## Build from source
 
 ```bash
 git clone git@github.com:rloechner/canvas-library.git

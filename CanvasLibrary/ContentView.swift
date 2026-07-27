@@ -75,32 +75,34 @@ struct ContentView: View {
     }
 
     private var documentHeader: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             if let doc = app.openDoc {
-                Image(systemName: doc.kind.systemImage)
-                    .foregroundStyle(doc.kind == .canvas ? .purple : .blue)
-                VStack(alignment: .leading, spacing: 2) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill((doc.kind == .canvas ? Color.purple : Color.blue).opacity(0.12))
+                        .frame(width: 34, height: 34)
+                    Image(systemName: doc.kind.systemImage)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(doc.kind == .canvas ? .purple : .blue)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(doc.displayTitle)
                             .font(.headline)
-                        Text(doc.kind.title.lowercased())
-                            .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background((doc.kind == .canvas ? Color.purple : Color.blue).opacity(0.15))
-                            .foregroundStyle(doc.kind == .canvas ? .purple : .blue)
-                            .clipShape(Capsule())
+                            .lineLimit(1)
+                        kindBadge(doc.kind)
                         if app.isDirty {
-                            Text("edited")
+                            Text("Edited")
                                 .font(.caption2.weight(.semibold))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Color.orange.opacity(0.15))
+                                .background(Color.orange.opacity(0.16))
                                 .foregroundStyle(.orange)
                                 .clipShape(Capsule())
                         }
                     }
-                    Text("\(doc.projectName)  ·  \(doc.fileName)")
+                    Text(pathSubtitle(for: doc))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -110,20 +112,15 @@ struct ContentView: View {
 
             Spacer(minLength: 8)
 
-            // Cycle
             HStack(spacing: 4) {
-                Button {
-                    app.goPrev()
-                } label: {
+                Button { app.goPrev() } label: {
                     Image(systemName: "chevron.up")
                 }
                 .disabled(!app.canGoPrev)
                 .help("Previous document (⌘↑)")
                 .keyboardShortcut(.upArrow, modifiers: .command)
 
-                Button {
-                    app.goNext()
-                } label: {
+                Button { app.goNext() } label: {
                     Image(systemName: "chevron.down")
                 }
                 .disabled(!app.canGoNext)
@@ -131,8 +128,8 @@ struct ContentView: View {
                 .keyboardShortcut(.downArrow, modifiers: .command)
             }
             .buttonStyle(.bordered)
+            .controlSize(.small)
 
-            // Unlock preview (canvas only)
             if app.openDoc?.kind == .canvas, app.viewMode == .preview {
                 Toggle(isOn: Binding(
                     get: { app.isDesignMode },
@@ -145,23 +142,20 @@ struct ContentView: View {
                 }
                 .toggleStyle(.button)
                 .buttonStyle(.bordered)
+                .controlSize(.small)
                 .tint(app.isDesignMode ? .blue : nil)
                 .help("Unlock preview to click and edit text in the canvas")
             }
 
             if app.isDesignMode, app.viewMode == .preview {
-                Button {
-                    app.revertDocument()
-                } label: {
+                Button { app.revertDocument() } label: {
                     Label("Revert", systemImage: "arrow.uturn.backward")
                 }
                 .buttonStyle(.bordered)
                 .disabled(!app.isDirty)
                 .controlSize(.small)
 
-                Button {
-                    app.saveDocument()
-                } label: {
+                Button { app.saveDocument() } label: {
                     Label("Save", systemImage: "square.and.arrow.down")
                 }
                 .buttonStyle(.borderedProminent)
@@ -175,8 +169,9 @@ struct ContentView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(width: 180)
+            .frame(width: 168)
             .labelsHidden()
+            .controlSize(.small)
             .onChange(of: app.viewMode) { _, mode in
                 if mode == .source {
                     app.setDesignMode(false)
@@ -186,6 +181,23 @@ struct ContentView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(.bar)
+    }
+
+    private func kindBadge(_ kind: DocumentKind) -> some View {
+        Text(kind.title)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background((kind == .canvas ? Color.purple : Color.blue).opacity(0.14))
+            .foregroundStyle(kind == .canvas ? .purple : .blue)
+            .clipShape(Capsule())
+    }
+
+    private func pathSubtitle(for doc: WorkingDocument) -> String {
+        if doc.folderPath.isEmpty {
+            return "\(doc.projectName)  ·  \(doc.fileName)"
+        }
+        return "\(doc.projectName)/\(doc.folderPath)  ·  \(doc.fileName)"
     }
 
     @ViewBuilder
@@ -309,20 +321,38 @@ struct ContentView: View {
     }
 
     private var statusBar: some View {
-        HStack {
+        HStack(spacing: 8) {
             if app.isFormatting || app.isCompiling || app.isScanning {
                 ProgressView().controlSize(.small)
+            } else if app.isDirty {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 6, height: 6)
+                    .help("Unsaved changes")
+            } else if app.openDoc != nil {
+                Circle()
+                    .fill(Color.green.opacity(0.75))
+                    .frame(width: 6, height: 6)
+                    .help("Saved")
             }
+
             if let status = app.statusMessage {
                 Text(status)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            Spacer()
+
+            Spacer(minLength: 8)
+
             if app.openDoc != nil {
                 let lines = app.bufferText.split(separator: "\n", omittingEmptySubsequences: false).count
-                Text("\(lines) lines · \(app.bufferText.count) chars")
+                Text("\(lines) lines")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                Text("·")
+                    .foregroundStyle(.quaternary)
+                Text("\(app.bufferText.count) chars")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.tertiary)
             } else {
@@ -331,8 +361,8 @@ struct ContentView: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
         .background(.bar)
     }
 

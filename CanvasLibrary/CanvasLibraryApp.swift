@@ -17,7 +17,7 @@ struct CanvasLibraryApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appModel)
-                .frame(minWidth: 960, minHeight: 600)
+                .frame(minWidth: 980, minHeight: 640)
                 .onAppear {
                     appDelegate.bind(appModel)
                     NSApp.setActivationPolicy(.regular)
@@ -26,6 +26,7 @@ struct CanvasLibraryApp: App {
                     openURL(url)
                 }
         }
+        .defaultSize(width: 1180, height: 760)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Open…") {

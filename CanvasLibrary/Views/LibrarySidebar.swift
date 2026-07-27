@@ -1,6 +1,6 @@
 //
 //  LibrarySidebar.swift
-//  CanvasSpace
+//  Canvas Library
 //
 
 import SwiftUI
@@ -12,6 +12,7 @@ struct LibrarySidebar: View {
         VStack(spacing: 0) {
             searchField
             documentList
+            sidebarFooter
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
@@ -38,7 +39,6 @@ struct LibrarySidebar: View {
         }
         .onChange(of: app.searchText) { _, query in
             guard !query.isEmpty else { return }
-            // While searching, force-expand projects that have matches.
             var next = app.expandedProjects
             next.formUnion(app.orderedProjectNames)
             app.expandedProjects = next
@@ -46,27 +46,35 @@ struct LibrarySidebar: View {
     }
 
     private var searchField: some View {
-        HStack {
+        HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
-            TextField("Search", text: $app.searchText)
+            TextField("Search library", text: $app.searchText)
                 .textFieldStyle(.plain)
+                .font(.body)
             if !app.searchText.isEmpty {
                 Button {
                     app.searchText = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
+                        .imageScale(.medium)
                 }
                 .buttonStyle(.plain)
+                .help("Clear search")
             }
         }
-        .padding(8)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.9), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+        }
         .padding(.horizontal, 12)
         .padding(.top, 10)
-        .padding(.bottom, 8)
+        .padding(.bottom, 6)
     }
 
     private var documentList: some View {
@@ -79,16 +87,25 @@ struct LibrarySidebar: View {
             }
         )) {
             if app.isScanning {
-                HStack {
+                HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Scanning…").foregroundStyle(.secondary)
+                    Text("Scanning…")
+                        .foregroundStyle(.secondary)
+                        .font(.callout)
                 }
+                .listRowSeparator(.hidden)
             }
 
             if app.orderedProjectNames.isEmpty, !app.isScanning {
-                Text("No documents")
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
+                ContentUnavailableView {
+                    Label("No documents", systemImage: "doc.text.magnifyingglass")
+                } description: {
+                    Text(app.searchText.isEmpty
+                         ? "Scan Cursor projects or add a folder."
+                         : "Nothing matches “\(app.searchText)”.")
+                }
+                .frame(maxWidth: .infinity)
+                .listRowSeparator(.hidden)
             } else {
                 ForEach(app.orderedProjectNames, id: \.self) { projectName in
                     ProjectSection(projectName: projectName)
@@ -96,10 +113,44 @@ struct LibrarySidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+    }
+
+    private var sidebarFooter: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "books.vertical")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            Text(footerLabel)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            if app.filter != .all {
+                Text(app.filter.title)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.primary.opacity(0.06), in: Capsule())
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private var footerLabel: String {
+        let n = app.filteredDocuments.count
+        let total = app.documents.count
+        if app.searchText.isEmpty, app.filter == .all {
+            return "\(total) document\(total == 1 ? "" : "s")"
+        }
+        return "\(n) of \(total)"
     }
 }
 
-// MARK: - Project section (root of Finder tree)
+// MARK: - Project section
 
 private struct ProjectSection: View {
     @EnvironmentObject private var app: AppModel
@@ -136,28 +187,29 @@ private struct ProjectSection: View {
                 TreeNodeView(node: node, projectName: projectName)
             }
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 Image(systemName: "folder.fill")
-                    .foregroundStyle(.secondary)
                     .font(.caption)
+                    .foregroundStyle(Color.accentColor.opacity(0.85))
                     .frame(width: 14)
                 Text(projectName)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 Text("\(fileCount)")
-                    .font(.caption)
+                    .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
-                    .monospacedDigit()
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Color.primary.opacity(0.05), in: Capsule())
             }
         }
     }
 }
 
-// MARK: - Recursive folder / file nodes
+// MARK: - Tree nodes
 
 private struct TreeNodeView: View {
-    @EnvironmentObject private var app: AppModel
     let node: LibraryTreeNode
     let projectName: String
 
@@ -201,19 +253,18 @@ private struct FolderSection: View {
                 TreeNodeView(node: child, projectName: projectName)
             }
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 Image(systemName: "folder.fill")
-                    .foregroundStyle(Color.accentColor.opacity(0.85))
                     .font(.caption)
+                    .foregroundStyle(Color.secondary.opacity(0.85))
                     .frame(width: 14)
                 Text(name)
-                    .font(.body)
+                    .font(.callout)
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 Text("\(fileCount)")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .monospacedDigit()
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.quaternary)
             }
         }
         .id(id)
@@ -234,22 +285,23 @@ private struct DocumentRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: doc.kind.systemImage)
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(doc.kind == .canvas ? Color.purple : Color.blue)
                 .frame(width: 16)
 
             Text(doc.displayTitle)
-                .font(.body)
+                .font(.callout)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
             Spacer(minLength: 6)
 
             Text(Self.relativeFormatter.localizedString(for: doc.modifiedAt, relativeTo: Date()))
-                .font(.caption)
+                .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
-        .padding(.vertical, 1)
+        .padding(.vertical, 2)
         .help(doc.relativePath == doc.fileName ? doc.urlPath : "\(doc.projectName)/\(doc.relativePath)")
     }
 }
