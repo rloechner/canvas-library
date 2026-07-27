@@ -33,7 +33,9 @@ PROJECT=""
 TARGET_NAME="TSXPretty"
 PRODUCT_DISPLAY_NAME="Canvas Library"
 DIST_DIR="${ROOT}/dist"
-BUILD_DIR="${ROOT}/build/release"
+# Keep intermediate builds outside iCloud Desktop/Documents — codesign rejects
+# resource forks / Finder metadata that File Provider attaches under those trees.
+BUILD_DIR="${CANVAS_LIBRARY_BUILD_DIR:-/tmp/CanvasLibrary-release}"
 ARCHIVE_FORMAT="auto" # auto | dmg | zip
 
 usage() {
@@ -75,7 +77,9 @@ mkdir -p "${DIST_DIR}" "${BUILD_DIR}"
 rm -rf "${BUILD_DIR}/DerivedData" "${BUILD_DIR}/export"
 mkdir -p "${BUILD_DIR}/DerivedData" "${BUILD_DIR}/export"
 
+echo "==> Build dir: ${BUILD_DIR}"
 echo "==> Building Release (macOS)…"
+# Sign during build so Swift stdlib copy is signed; re-sign deep afterward.
 xcodebuild \
   -project "${PROJECT}" \
   -scheme "${SCHEME}" \
@@ -101,7 +105,21 @@ fi
 APP_NAME="$(basename "${APP_SRC}")"
 APP_DEST="${BUILD_DIR}/export/${APP_NAME}"
 rm -rf "${APP_DEST}"
+# ditto preserves content cleanly; prefer over cp -R for bundles
 ditto "${APP_SRC}" "${APP_DEST}"
+
+strip_xattrs() {
+  local target="$1"
+  /usr/bin/xattr -cr "${target}" 2>/dev/null || true
+  /usr/bin/find "${target}" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true
+  # Some attributes reappear if the tree sits under iCloud; strip common offenders.
+  /usr/bin/xattr -dr com.apple.FinderInfo "${target}" 2>/dev/null || true
+  /usr/bin/xattr -dr com.apple.fileprovider.fpfs#P "${target}" 2>/dev/null || true
+  /usr/bin/xattr -dr com.apple.provenance "${target}" 2>/dev/null || true
+}
+
+echo "==> Stripping extended attributes…"
+strip_xattrs "${APP_DEST}"
 
 echo "==> Codesigning ${APP_NAME} with Developer ID (deep, runtime, timestamp)…"
 # Re-sign nested code first, then the app bundle (hardened runtime required for notarization).
