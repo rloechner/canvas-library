@@ -44,6 +44,10 @@ struct CanvasLibraryApp: App {
                     appModel.addFolderSpace()
                 }
 
+                Button("Add Cursor Canvases…") {
+                    appModel.addCursorCanvasesSpace()
+                }
+
                 Divider()
 
                 Button("Previous Document") {

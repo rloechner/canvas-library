@@ -15,13 +15,18 @@ final class AppModel: ObservableObject {
     // MARK: - Library
 
     @Published private(set) var documents: [WorkingDocument] = []
-    @Published var filter: LibraryFilter = .all
+    @Published var filter: LibraryFilter = .all {
+        didSet { defaults.set(filter.rawValue, forKey: libraryFilterKey) }
+    }
     @Published var searchText: String = ""
     @Published var selectedID: WorkingDocument.ID?
     @Published private(set) var spaces: [DocumentSpace] = []
+    @Published private(set) var needsSetup: Bool = false
     @Published private(set) var isScanning = false
     /// Bumps whenever the library set changes so sidebar Lists reliably re-render.
     @Published private(set) var libraryEpoch: UInt64 = 0
+    /// Stable A–Z project names for the sidebar (published explicitly for SwiftUI).
+    @Published private(set) var sidebarProjectNames: [String] = []
 
     // MARK: - Open document buffer
 
@@ -63,6 +68,18 @@ final class AppModel: ObservableObject {
     @Published var expandedFolders: Set<String> = [] {
         didSet { persistExpandedFolders() }
     }
+    /// Preferred project order in the sidebar (names not in the list sort A–Z after).
+    @Published var projectOrder: [String] = [] {
+        didSet { defaults.set(projectOrder, forKey: projectOrderKey) }
+    }
+    /// Projects hidden from the sidebar (not deleted from disk).
+    @Published var hiddenProjects: Set<String> = [] {
+        didSet { defaults.set(Array(hiddenProjects).sorted(), forKey: hiddenProjectsKey) }
+    }
+    /// Hidden folders: `"projectName//relative/folder"` (hides that folder and descendants).
+    @Published var excludedFolders: Set<String> = [] {
+        didSet { defaults.set(Array(excludedFolders).sorted(), forKey: excludedFoldersKey) }
+    }
 
     private let scanner = LibraryScanner()
     private let outlineParser = TSXOutlineParser()
@@ -70,9 +87,16 @@ final class AppModel: ObservableObject {
     private var lastCompileResult: CanvasCompileResult?
     private let defaults = UserDefaults.standard
     private let recentKey = "canvaslibrary.recentIDs"
+    /// Legacy key — read-only for migration; new saves use librarySpacesKey.
     private let extraSpacesKey = "canvaslibrary.extraSpaces"
+    private let librarySpacesKey = "canvaslibrary.librarySpaces"
+    private let didCompleteSetupKey = "canvaslibrary.didCompleteSetup"
+    private let libraryFilterKey = "canvaslibrary.libraryFilter"
     private let expandedProjectsKey = "canvaslibrary.expandedProjects"
     private let expandedFoldersKey = "canvaslibrary.expandedFolders"
+    private let projectOrderKey = "canvaslibrary.projectOrder"
+    private let hiddenProjectsKey = "canvaslibrary.hiddenProjects"
+    private let excludedFoldersKey = "canvaslibrary.excludedFolders"
     private let fontSizeKey = "canvaslibrary.fontSize"
     private let lineNumbersKey = "canvaslibrary.showLineNumbers"
     private var didInitializeExpandedProjects = false
@@ -86,6 +110,8 @@ final class AppModel: ObservableObject {
     /// Documents matching kind filter + search, before project grouping.
     private var matchingDocuments: [WorkingDocument] {
         documents.filter { doc in
+            if hiddenProjects.contains(doc.projectName) { return false }
+            if isDocumentExcluded(doc) { return false }
             switch filter {
             case .all: break
             case .canvases: if doc.kind != .canvas { return false }
@@ -101,12 +127,36 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Project names in sidebar display order — stable A–Z (no “recent project jumps”).
+    private func isDocumentExcluded(_ doc: WorkingDocument) -> Bool {
+        for key in excludedFolders {
+            // Stored as "project//folder/path"
+            guard let range = key.range(of: "//") else { continue }
+            let project = String(key[..<range.lowerBound])
+            let folder = String(key[range.upperBound...])
+            guard project == doc.projectName, !folder.isEmpty else { continue }
+            if doc.folderPath == folder || doc.folderPath.hasPrefix(folder + "/") { return true }
+            if doc.relativePath == folder || doc.relativePath.hasPrefix(folder + "/") { return true }
+        }
+        return false
+    }
+
+    /// Project names in sidebar display order (custom order, then A–Z).
     var orderedProjectNames: [String] {
-        let names = Set(matchingDocuments.map(\.projectName))
-        return names.sorted {
+        orderedNames(from: Set(matchingDocuments.map(\.projectName)))
+    }
+
+    private func orderedNames(from names: Set<String>) -> [String] {
+        var remaining = names
+        var result: [String] = []
+        for name in projectOrder where remaining.contains(name) {
+            result.append(name)
+            remaining.remove(name)
+        }
+        let rest = remaining.sorted {
             $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
         }
+        result.append(contentsOf: rest)
+        return result
     }
 
     /// Filtered documents in a project (unsorted raw match set for tree building).
@@ -117,6 +167,10 @@ final class AppModel: ObservableObject {
     /// Finder-like tree for a project: folders (only those with matches) then files, A–Z.
     func libraryTree(for projectName: String) -> [LibraryTreeNode] {
         LibraryTreeBuilder.build(docs: documents(inProject: projectName), projectName: projectName)
+    }
+
+    static func folderExclusionKey(project: String, folderPath: String) -> String {
+        "\(project)//\(folderPath)"
     }
 
     /// Flatten of project-major, tree-order — used by goNext/goPrev.
@@ -191,6 +245,17 @@ final class AppModel: ObservableObject {
         if let savedFolders = defaults.stringArray(forKey: expandedFoldersKey) {
             expandedFolders = Set(savedFolders)
         }
+        projectOrder = defaults.stringArray(forKey: projectOrderKey) ?? []
+        if let hidden = defaults.stringArray(forKey: hiddenProjectsKey) {
+            hiddenProjects = Set(hidden)
+        }
+        if let excluded = defaults.stringArray(forKey: excludedFoldersKey) {
+            excludedFolders = Set(excluded)
+        }
+        if let raw = defaults.string(forKey: libraryFilterKey),
+           let savedFilter = LibraryFilter(rawValue: raw) {
+            filter = savedFilter
+        }
         loadSpaces()
         // Do NOT scan here. Publishing @Published during @StateObject init
         // often drops the first UI update — sidebar stays empty until a later
@@ -199,15 +264,50 @@ final class AppModel: ObservableObject {
 
     /// Call from the root view's onAppear. Safe to call repeatedly.
     func ensureLibraryLoaded() {
+        // First-launch / setup incomplete: do not auto-scan.
+        if needsSetup {
+            debugLog("ensureLibraryLoaded skip — needsSetup")
+            return
+        }
+        // After setup with no spaces, avoid infinite empty-library retries.
+        if spaces.isEmpty {
+            debugLog("ensureLibraryLoaded skip — no spaces configured")
+            return
+        }
         if !didScheduleInitialScan {
             didScheduleInitialScan = true
             refreshLibrary()
+            // First-frame races: if the initial async apply is dropped, retry once
+            // (only when spaces are non-empty — empty spaces are intentional).
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                guard let self else { return }
+                if self.documents.isEmpty, !self.isScanning, !self.spaces.isEmpty {
+                    self.debugLog("ensureLibraryLoaded retry — still empty after 0.6s")
+                    self.refreshLibrary()
+                }
+            }
             return
         }
-        // If the first scan somehow never applied, try again when UI appears.
-        if documents.isEmpty, !isScanning {
+        if documents.isEmpty, !isScanning, !spaces.isEmpty {
             refreshLibrary()
         }
+    }
+
+    private func debugLog(_ message: String) {
+        #if DEBUG
+        let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
+        let path = "/tmp/canvaslibrary-debug.log"
+        if let data = line.data(using: .utf8) {
+            if FileManager.default.fileExists(atPath: path),
+               let handle = try? FileHandle(forWritingTo: URL(fileURLWithPath: path)) {
+                defer { try? handle.close() }
+                handle.seekToEndOfFile()
+                handle.write(data)
+            } else {
+                try? data.write(to: URL(fileURLWithPath: path))
+            }
+        }
+        #endif
     }
 
     /// Ensure the project (and ancestor folders) that own the current selection are expanded.
@@ -230,19 +330,17 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// After library scan: first launch expands top project only; always expand selection's path.
+    /// After library scan: expand projects so the sidebar is visibly populated.
     func ensureExpandedProjectsAfterScan() {
-        let names = orderedProjectNames
+        let names = sidebarProjectNames.isEmpty ? orderedProjectNames : sidebarProjectNames
         guard !names.isEmpty else { return }
 
-        // Drop expansion keys for projects that no longer exist.
+        // Always expand every project after a scan so the first paint shows
+        // documents — not an empty-looking rail of collapsed folders. Users can
+        // still collapse; the next rescan re-opens for discoverability.
         let nameSet = Set(names)
-        expandedProjects = expandedProjects.intersection(nameSet)
-
-        if !didInitializeExpandedProjects || expandedProjects.isEmpty {
-            expandedProjects = [names[0]]
-            didInitializeExpandedProjects = true
-        }
+        expandedProjects = nameSet
+        didInitializeExpandedProjects = true
 
         expandProjectForSelection()
     }
@@ -258,19 +356,93 @@ final class AppModel: ObservableObject {
     // MARK: - Spaces
 
     private func loadSpaces() {
-        var list = [DocumentSpace.allCursorCanvases()]
-        if let data = defaults.data(forKey: extraSpacesKey),
-           let extra = try? JSONDecoder().decode([DocumentSpace].self, from: data) {
-            list.append(contentsOf: extra)
+        let didSetup = defaults.bool(forKey: didCompleteSetupKey)
+
+        if didSetup {
+            // User-controlled spaces only (may be empty).
+            if let data = defaults.data(forKey: librarySpacesKey),
+               let saved = try? JSONDecoder().decode([DocumentSpace].self, from: data) {
+                spaces = saved
+            } else {
+                spaces = []
+            }
+            needsSetup = false
+            debugLog("loadSpaces setup complete spaces=\(spaces.count)")
+            return
         }
-        spaces = list
+
+        // Legacy signals: prior installs always auto-injected cursor + may have extras.
+        let legacyExtras: [DocumentSpace] = {
+            guard let data = defaults.data(forKey: extraSpacesKey),
+                  let extra = try? JSONDecoder().decode([DocumentSpace].self, from: data)
+            else { return [] }
+            return extra
+        }()
+        let hasLegacySignals =
+            !legacyExtras.isEmpty
+            || !recentIDs.isEmpty
+            || !expandedProjects.isEmpty
+            || !projectOrder.isEmpty
+
+        if hasLegacySignals {
+            // One-time migration from pre-setup model.
+            if !legacyExtras.isEmpty {
+                spaces = legacyExtras
+            } else {
+                // Old default was always-on cursor scan — promote once for returning users.
+                spaces = [DocumentSpace.allCursorCanvases()]
+            }
+            persistSpaces()
+            defaults.set(true, forKey: didCompleteSetupKey)
+            needsSetup = false
+            debugLog("loadSpaces migrated legacy spaces=\(spaces.count)")
+            return
+        }
+
+        // True first launch: empty library, user must opt in.
+        spaces = []
+        needsSetup = true
+        debugLog("loadSpaces first launch — needsSetup")
     }
 
-    private func persistExtraSpaces() {
-        let extra = spaces.filter { $0.id != "cursor-all-canvases" }
-        if let data = try? JSONEncoder().encode(extra) {
-            defaults.set(data, forKey: extraSpacesKey)
+    private func persistSpaces() {
+        if let data = try? JSONEncoder().encode(spaces) {
+            defaults.set(data, forKey: librarySpacesKey)
         }
+    }
+
+    /// Mark setup complete. Refresh only when spaces are configured.
+    func completeSetup() {
+        defaults.set(true, forKey: didCompleteSetupKey)
+        needsSetup = false
+        if !spaces.isEmpty {
+            refreshLibrary()
+        }
+        debugLog("completeSetup spaces=\(spaces.count)")
+    }
+
+    /// Finish setup with an empty library (no scan thrash).
+    func completeSetupEmpty() {
+        spaces = []
+        persistSpaces()
+        defaults.set(true, forKey: didCompleteSetupKey)
+        needsSetup = false
+        debugLog("completeSetupEmpty")
+    }
+
+    /// Opt-in: append the Cursor projects recursive space if missing.
+    func addCursorCanvasesSpace() {
+        let cursor = DocumentSpace.allCursorCanvases()
+        if !spaces.contains(where: { $0.id == cursor.id }) {
+            spaces.append(cursor)
+            persistSpaces()
+        }
+        if needsSetup {
+            completeSetup()
+        } else {
+            refreshLibrary()
+        }
+        debugLog("addCursorCanvasesSpace spaces=\(spaces.count)")
     }
 
     func addFolderSpace() {
@@ -289,16 +461,138 @@ final class AppModel: ObservableObject {
         )
         if !spaces.contains(where: { $0.id == space.id }) {
             spaces.append(space)
-            persistExtraSpaces()
-            refreshLibrary()
+            persistSpaces()
+            if needsSetup {
+                completeSetup()
+            } else {
+                refreshLibrary()
+            }
         }
     }
 
     func removeSpace(_ space: DocumentSpace) {
-        guard space.id != "cursor-all-canvases" else { return }
+        // Any space is removable, including cursor-all-canvases.
         spaces.removeAll { $0.id == space.id }
-        persistExtraSpaces()
+        persistSpaces()
         refreshLibrary()
+    }
+
+    /// All user-configured spaces (cursor is no longer a special permanent root).
+    /// Kept for Settings/UI compatibility; same as `spaces`.
+    var extraSpaces: [DocumentSpace] {
+        spaces
+    }
+
+    /// Reorder any user space among the full spaces list.
+    /// - Parameter direction: -1 up, +1 down.
+    func moveExtraSpace(id: String, direction: Int) {
+        guard let idx = spaces.firstIndex(where: { $0.id == id }) else { return }
+        let newIdx = idx + direction
+        guard spaces.indices.contains(newIdx) else { return }
+        spaces.swapAt(idx, newIdx)
+        persistSpaces()
+        refreshLibrary()
+    }
+
+    func removableSpace(forProject projectName: String) -> DocumentSpace? {
+        // Prefer spaceID from any doc in the project (cursor is removable).
+        if let spaceID = documents.first(where: { $0.projectName == projectName && !$0.spaceID.isEmpty })?.spaceID,
+           let space = spaces.first(where: { $0.id == spaceID }) {
+            return space
+        }
+        // Fallback: match by display name for single-folder spaces.
+        return spaces.first { $0.name == projectName }
+    }
+
+    func hideProject(_ projectName: String) {
+        hiddenProjects.insert(projectName)
+        rebuildSidebarProjectNames()
+        libraryEpoch &+= 1
+        if openDoc?.projectName == projectName {
+            selectedID = nil
+            if !isDirty { closeDocument() }
+        }
+        statusMessage = "Hidden “\(projectName)”"
+    }
+
+    func unhideProject(_ projectName: String) {
+        hiddenProjects.remove(projectName)
+        rebuildSidebarProjectNames()
+        libraryEpoch &+= 1
+        statusMessage = "Showing “\(projectName)”"
+    }
+
+    func unhideAllProjects() {
+        hiddenProjects.removeAll()
+        rebuildSidebarProjectNames()
+        libraryEpoch &+= 1
+    }
+
+    func excludeFolder(project: String, folderPath: String) {
+        guard !folderPath.isEmpty else { return }
+        excludedFolders.insert(Self.folderExclusionKey(project: project, folderPath: folderPath))
+        rebuildSidebarProjectNames()
+        libraryEpoch &+= 1
+        statusMessage = "Hidden folder “\(folderPath)”"
+    }
+
+    func includeFolder(project: String, folderPath: String) {
+        excludedFolders.remove(Self.folderExclusionKey(project: project, folderPath: folderPath))
+        libraryEpoch &+= 1
+    }
+
+    func clearExcludedFolders() {
+        excludedFolders.removeAll()
+        libraryEpoch &+= 1
+    }
+
+    func moveProject(_ projectName: String, direction: Int) {
+        var order = orderedProjectNames
+        guard let idx = order.firstIndex(of: projectName) else { return }
+        let newIdx = idx + direction
+        guard order.indices.contains(newIdx) else { return }
+        order.swapAt(idx, newIdx)
+        projectOrder = order
+        rebuildSidebarProjectNames()
+        libraryEpoch &+= 1
+    }
+
+    func revealProjectInFinder(_ projectName: String) {
+        if let space = removableSpace(forProject: projectName) {
+            NSWorkspace.shared.open(space.url)
+            return
+        }
+        if let doc = documents.first(where: { $0.projectName == projectName }) {
+            var url = doc.url.deletingLastPathComponent()
+            if !doc.folderPath.isEmpty {
+                let comps = doc.folderPath.split(separator: "/").count
+                for _ in 0..<comps {
+                    url = url.deletingLastPathComponent()
+                }
+            }
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    func revealFolderInFinder(project: String, folderPath: String) {
+        guard let doc = documents.first(where: {
+            $0.projectName == project
+                && ($0.folderPath == folderPath || $0.folderPath.hasPrefix(folderPath + "/"))
+        }) else { return }
+        let fileFolder = doc.url.deletingLastPathComponent()
+        if doc.folderPath == folderPath {
+            NSWorkspace.shared.open(fileFolder)
+            return
+        }
+        if doc.folderPath.hasPrefix(folderPath + "/") {
+            let extra = String(doc.folderPath.dropFirst(folderPath.count + 1))
+            let up = extra.split(separator: "/").count
+            var u = fileFolder
+            for _ in 0..<up { u = u.deletingLastPathComponent() }
+            NSWorkspace.shared.open(u)
+            return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([doc.url])
     }
 
     // MARK: - Library
@@ -308,12 +602,18 @@ final class AppModel: ObservableObject {
         let generation = scanGeneration
         isScanning = true
         let spacesSnapshot = spaces
+        debugLog("refreshLibrary gen=\(generation) spaces=\(spacesSnapshot.map(\.path))")
 
-        Task.detached(priority: .userInitiated) {
+        // Prefer GCD over Task.detached so results always hop back to main
+        // cleanly (detached + @MainActor apply was flaky on first window frame).
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let docs = LibraryScanner().scan(spaces: spacesSnapshot)
-            await MainActor.run {
-                // Ignore stale scans if a newer refresh was started.
-                guard generation == self.scanGeneration else { return }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard generation == self.scanGeneration else {
+                    self.debugLog("refreshLibrary ignore stale gen=\(generation) current=\(self.scanGeneration)")
+                    return
+                }
                 self.applyLibraryScan(docs)
             }
         }
@@ -325,10 +625,15 @@ final class AppModel: ObservableObject {
         if let open = openDoc, !merged.contains(where: { $0.id == open.id }) {
             merged.append(open)
         }
+
+        // Explicit willChange helps sidebar re-render on first populate.
+        objectWillChange.send()
         documents = merged
+        rebuildSidebarProjectNames()
         isScanning = false
         libraryEpoch &+= 1
         statusMessage = "\(docs.count) documents"
+        debugLog("applyLibraryScan scan=\(docs.count) merged=\(merged.count) projects=\(sidebarProjectNames)")
 
         if let id = selectedID, !merged.contains(where: { $0.id == id }) {
             if isDirty, let open = openDoc {
@@ -336,6 +641,7 @@ final class AppModel: ObservableObject {
                 selectedID = open.id
                 if !documents.contains(where: { $0.id == open.id }) {
                     documents.append(open)
+                    rebuildSidebarProjectNames()
                 }
             } else if openDoc != nil {
                 // Keep editing even if the row fell out of the scan set.
@@ -346,6 +652,15 @@ final class AppModel: ObservableObject {
             }
         }
         ensureExpandedProjectsAfterScan()
+    }
+
+    private func rebuildSidebarProjectNames() {
+        let names = Set(
+            documents
+                .filter { !hiddenProjects.contains($0.projectName) && !isDocumentExcluded($0) }
+                .map(\.projectName)
+        )
+        sidebarProjectNames = orderedNames(from: names)
     }
 
     func select(_ doc: WorkingDocument) {
@@ -412,6 +727,7 @@ final class AppModel: ObservableObject {
             // Surface externally opened files in the sidebar without a full rescan.
             if !documents.contains(where: { $0.id == doc.id }) {
                 documents.append(doc)
+                rebuildSidebarProjectNames()
                 libraryEpoch &+= 1
             }
 
@@ -597,6 +913,7 @@ final class AppModel: ObservableObject {
             documents[idx] = doc
         } else {
             documents.append(doc)
+            rebuildSidebarProjectNames()
             libraryEpoch &+= 1
         }
     }

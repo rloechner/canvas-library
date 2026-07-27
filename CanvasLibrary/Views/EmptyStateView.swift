@@ -35,7 +35,7 @@ struct EmptyStateView: View {
                     VStack(spacing: 10) {
                         Text("Canvas Library")
                             .font(.system(size: 28, weight: .semibold, design: .rounded))
-                        Text("Your Cursor canvases and markdown — browse, preview, and lightly edit without hunting projects.")
+                        Text("Your working canvases and markdown — browse, preview, and lightly edit in one place.")
                             .font(.body)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -46,14 +46,14 @@ struct EmptyStateView: View {
                     if isScanning && documentCount == 0 {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
-                            Text("Scanning Cursor projects…")
+                            Text("Scanning library…")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
                     } else if documentCount > 0 {
                         libraryPill
                     } else {
-                        Text("No documents yet — scan your Cursor projects or open a file.")
+                        Text("No documents yet — add a folder or open a file.")
                             .font(.subheadline)
                             .foregroundStyle(.tertiary)
                     }
@@ -66,22 +66,22 @@ struct EmptyStateView: View {
                         .controlSize(.large)
                         .keyboardShortcut("o", modifiers: .command)
 
+                        Button(action: onAddFolder) {
+                            Label("Add Folder", systemImage: "folder.badge.plus")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+
                         Button(action: onRefresh) {
                             Label("Rescan Library", systemImage: "arrow.triangle.2.circlepath")
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.large)
                         .disabled(isScanning)
-
-                        Button(action: onAddFolder) {
-                            Label("Add Folder", systemImage: "folder.badge.plus")
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
                     }
                     .padding(.top, 4)
 
-                    Text("Scans ~/.cursor/projects/*/canvases  ·  drop files here")
+                    Text("Library = folders you add  ·  drop files here")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .padding(.top, 8)

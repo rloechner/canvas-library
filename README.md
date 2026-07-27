@@ -26,9 +26,9 @@ Canvas Library treats those files as a **working library**:
 
 | Area | What you get |
 |------|----------------|
-| **Library** | Scans `~/.cursor/projects/*/canvases` recursively for `.canvas.tsx` and `.md` |
-| **Finder-like sidebar** | Projects A–Z → nested folders (only places files exist) → documents |
-| **Filter & search** | All / Canvases / Markdown; search by title, path, or project |
+| **Library** | User-controlled folders of `.canvas.tsx` and `.md` (optional Cursor canvases scan) |
+| **Finder-like sidebar** | Projects → nested folders → documents; hide, reorder, remove spaces |
+| **Filter & search** | Both / Canvases / Markdown; search by title, path, or project |
 | **Cycle** | ⌘↑ / ⌘↓ through the filtered list |
 | **Canvas preview** | Live render via esbuild + canvas runtime |
 | **Markdown preview** | Local HTML preview |
@@ -68,7 +68,8 @@ Prebuilt **macOS** builds are on the [Releases](https://github.com/rloechner/can
 1. Download **Canvas-Library-x.y.z.dmg**
 2. Open the disk image and drag **Canvas Library** into **Applications**
 3. Launch from Applications (Developer ID–signed and notarized by Apple)
-4. Install [Cursor](https://cursor.com) and **Node.js** so canvas preview can compile
+4. On first launch, **add a folder** (or optionally Cursor canvases) to build your library
+5. Install **Node.js** for canvas preview compile; [Cursor](https://cursor.com) is optional if you use the Cursor canvases space
 
 ## Build from source
 

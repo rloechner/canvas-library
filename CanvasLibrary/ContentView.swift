@@ -12,37 +12,60 @@ struct ContentView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var isDropTargeted = false
     @State private var scrollToLine: Int?
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var sidebarWidth: CGFloat = 300
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            LibrarySidebar()
-                .navigationSplitViewColumnWidth(min: 240, ideal: 300, max: 420)
-                .toolbar {
-                    ToolbarItemGroup(placement: .primaryAction) {
-                        Button {
-                            app.refreshLibrary()
-                        } label: {
-                            Label("Rescan Library", systemImage: "arrow.triangle.2.circlepath")
-                        }
-                        .help("Rescan Cursor projects and custom spaces")
+        // HSplitView (not NavigationSplitView): NSSplitView lays out inside the
+        // window content area. NavigationSplitView was sizing the split ~2× the
+        // window height and drawing the outline above the titlebar.
+        NavigationStack {
+            HSplitView {
+                LibrarySidebar()
+                    .frame(minWidth: 240, idealWidth: sidebarWidth, maxWidth: 420)
+                    .layoutPriority(0)
 
-                        Button {
-                            app.addFolderSpace()
-                        } label: {
-                            Label("Add Folder", systemImage: "folder.badge.plus")
-                        }
-                        .help("Add a custom docs folder")
-                    }
-                }
-        } detail: {
-            detail
+                detail
+                    .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                    .layoutPriority(1)
+            }
+            .navigationTitle(app.openDoc?.displayTitle ?? "Canvas Library")
+            .toolbar { libraryToolbar; mainToolbar }
         }
-        .navigationTitle(app.openDoc?.displayTitle ?? "Canvas Library")
-        .toolbar { mainToolbar }
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { handleDrop($0) }
         .onAppear {
             app.ensureLibraryLoaded()
+        }
+        .sheet(isPresented: Binding(
+            get: { app.needsSetup },
+            set: { presented in
+                // Dismiss without choosing → start empty (utility-friendly).
+                if !presented, app.needsSetup {
+                    app.completeSetupEmpty()
+                }
+            }
+        )) {
+            FirstLaunchView()
+                .environmentObject(app)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var libraryToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+                app.refreshLibrary()
+            } label: {
+                Label("Rescan", systemImage: "arrow.triangle.2.circlepath")
+            }
+            .help("Rescan your library folders")
+            .disabled(app.spaces.isEmpty)
+
+            Button {
+                app.addFolderSpace()
+            } label: {
+                Label("Add Folder", systemImage: "folder.badge.plus")
+            }
+            .help("Add a folder of canvases or markdown")
         }
     }
 

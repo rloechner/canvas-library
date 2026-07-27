@@ -13,8 +13,8 @@ struct LibraryScanner {
 
         for space in spaces {
             let found = space.recursiveCanvases
-                ? scanCursorProjectsRoot(space.url)
-                : scanDirectory(space.url, projectName: space.name)
+                ? scanCursorProjectsRoot(space.url, spaceID: space.id)
+                : scanDirectory(space.url, projectName: space.name, spaceID: space.id)
 
             for doc in found {
                 byPath[doc.urlPath] = doc
@@ -30,7 +30,7 @@ struct LibraryScanner {
     }
 
     /// ~/.cursor/projects/*/canvases/**/*.{canvas.tsx,md}
-    private func scanCursorProjectsRoot(_ root: URL) -> [WorkingDocument] {
+    private func scanCursorProjectsRoot(_ root: URL, spaceID: String) -> [WorkingDocument] {
         guard fileManager.fileExists(atPath: root.path) else { return [] }
 
         var results: [WorkingDocument] = []
@@ -49,13 +49,13 @@ struct LibraryScanner {
             guard fileManager.fileExists(atPath: canvases.path) else { continue }
 
             let projectName = friendlyProjectName(projectURL.lastPathComponent)
-            results.append(contentsOf: scanDirectory(canvases, projectName: projectName))
+            results.append(contentsOf: scanDirectory(canvases, projectName: projectName, spaceID: spaceID))
         }
         return results
     }
 
     /// Recursively finds .canvas.tsx / .md under `dir`, preserving relative paths for the sidebar tree.
-    private func scanDirectory(_ dir: URL, projectName: String) -> [WorkingDocument] {
+    private func scanDirectory(_ dir: URL, projectName: String, spaceID: String) -> [WorkingDocument] {
         let root = dir.standardizedFileURL
         guard fileManager.fileExists(atPath: root.path) else { return [] }
 
@@ -108,6 +108,7 @@ struct LibraryScanner {
                     projectName: projectName,
                     fileName: url.lastPathComponent,
                     relativePath: relativePath,
+                    spaceID: spaceID,
                     modifiedAt: modified,
                     fileSize: size
                 )

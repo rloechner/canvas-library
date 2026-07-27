@@ -2,37 +2,33 @@
 //  LibrarySidebar.swift
 //  Canvas Library
 //
+//  Plain column layout (not NavigationSplitView-owned List). HSplitView parents
+//  this view so content stays inside the window safe area under the toolbar.
+//
 
+import AppKit
 import SwiftUI
 
 struct LibrarySidebar: View {
     @EnvironmentObject private var app: AppModel
 
     var body: some View {
+        let projectNames = displayedProjectNames
+        let scanning = app.isScanning
+        let epoch = app.libraryEpoch
+
         VStack(spacing: 0) {
             searchField
-            documentList
+            kindFilter
+            Divider()
+            documentList(projectNames: projectNames, scanning: scanning, epoch: epoch)
+            Divider()
             sidebarFooter
         }
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Menu {
-                    ForEach(LibraryFilter.allCases) { f in
-                        Button {
-                            app.filter = f
-                        } label: {
-                            if app.filter == f {
-                                Label(f.title, systemImage: "checkmark")
-                            } else {
-                                Text(f.title)
-                            }
-                        }
-                    }
-                } label: {
-                    Label(app.filter.title, systemImage: "line.3.horizontal.decrease.circle")
-                }
-                .help("Filter by document kind")
-            }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            app.ensureLibraryLoaded()
         }
         .onChange(of: app.selectedID) { _, _ in
             app.expandProjectForSelection()
@@ -40,9 +36,21 @@ struct LibrarySidebar: View {
         .onChange(of: app.searchText) { _, query in
             guard !query.isEmpty else { return }
             var next = app.expandedProjects
-            next.formUnion(app.orderedProjectNames)
+            next.formUnion(app.sidebarProjectNames)
             app.expandedProjects = next
         }
+        .onChange(of: app.libraryEpoch) { _, _ in
+            if app.expandedProjects.isEmpty, !app.sidebarProjectNames.isEmpty {
+                app.expandedProjects = Set(app.sidebarProjectNames)
+            }
+        }
+    }
+
+    private var displayedProjectNames: [String] {
+        if !app.searchText.isEmpty || app.filter != .all {
+            return app.orderedProjectNames
+        }
+        return app.sidebarProjectNames
     }
 
     private var searchField: some View {
@@ -53,6 +61,7 @@ struct LibrarySidebar: View {
             TextField("Search library", text: $app.searchText)
                 .textFieldStyle(.plain)
                 .font(.body)
+                .accessibilityLabel("Search library")
             if !app.searchText.isEmpty {
                 Button {
                     app.searchText = ""
@@ -66,27 +75,44 @@ struct LibrarySidebar: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.9), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .padding(.vertical, 7)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 10)
+        .padding(.horizontal, 10)
+        .padding(.top, 8)
         .padding(.bottom, 6)
     }
 
-    private var documentList: some View {
+    /// Both | Canvases | Markdown — primary kind switch for Cursor-style working docs.
+    private var kindFilter: some View {
+        Picker("Show", selection: $app.filter) {
+            ForEach(LibraryFilter.allCases) { f in
+                Text(f.title).tag(f)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .padding(.horizontal, 10)
+        .padding(.bottom, 8)
+        .help("Show canvases, markdown, or both")
+    }
+
+    @ViewBuilder
+    private func documentList(projectNames: [String], scanning: Bool, epoch: UInt64) -> some View {
         List(selection: Binding(
             get: { app.selectedID },
             set: { newID in
                 if let newID, let doc = app.filteredDocuments.first(where: { $0.id == newID }) {
                     app.select(doc)
+                } else if newID == nil {
+                    app.selectedID = nil
                 }
             }
         )) {
-            if app.isScanning {
+            if scanning && projectNames.isEmpty {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text("Scanning…")
@@ -94,29 +120,36 @@ struct LibrarySidebar: View {
                         .font(.callout)
                 }
                 .listRowSeparator(.hidden)
-            }
-
-            if app.orderedProjectNames.isEmpty, !app.isScanning {
+            } else if projectNames.isEmpty {
                 ContentUnavailableView {
                     Label("No documents", systemImage: "doc.text.magnifyingglass")
                 } description: {
-                    Text(app.searchText.isEmpty
-                         ? "Scan Cursor projects or add a folder."
-                         : "Nothing matches “\(app.searchText)”.")
+                    Text(emptyDescription)
                 }
-                .frame(maxWidth: .infinity)
                 .listRowSeparator(.hidden)
             } else {
-                ForEach(app.orderedProjectNames, id: \.self) { projectName in
+                ForEach(projectNames, id: \.self) { projectName in
                     ProjectSection(projectName: projectName)
                 }
             }
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
-        // Force List rebuild when scan results arrive (macOS can skip updates
-        // after the first async library populate).
-        .id(app.libraryEpoch)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(nil, value: epoch)
+    }
+
+    private var emptyDescription: String {
+        if !app.searchText.isEmpty {
+            return "Nothing matches “\(app.searchText)”."
+        }
+        if !app.hiddenProjects.isEmpty || !app.excludedFolders.isEmpty {
+            return "Everything is hidden, filtered, or empty. Check Settings → Library."
+        }
+        if app.spaces.isEmpty {
+            return "Add a folder from the toolbar or Settings to build your library."
+        }
+        return "No matching documents in your folders."
     }
 
     private var sidebarFooter: some View {
@@ -138,17 +171,21 @@ struct LibrarySidebar: View {
                     .background(Color.primary.opacity(0.06), in: Capsule())
             }
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(.bar)
+        .frame(maxWidth: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var footerLabel: String {
         let n = app.filteredDocuments.count
-        let total = app.documents.count
-        if app.searchText.isEmpty, app.filter == .all {
-            return "\(total) document\(total == 1 ? "" : "s")"
+        if app.isScanning, app.documents.isEmpty {
+            return "Scanning…"
         }
+        if app.searchText.isEmpty, app.filter == .all {
+            return "\(n) document\(n == 1 ? "" : "s")"
+        }
+        let total = app.documents.filter { !app.hiddenProjects.contains($0.projectName) }.count
         return "\(n) of \(total)"
     }
 }
@@ -167,10 +204,18 @@ private struct ProjectSection: View {
         tree.reduce(0) { $0 + $1.fileCount }
     }
 
+    private var names: [String] {
+        if !app.searchText.isEmpty || app.filter != .all {
+            return app.orderedProjectNames
+        }
+        return app.sidebarProjectNames
+    }
+
     private var isExpandedBinding: Binding<Bool> {
         Binding(
             get: {
                 if !app.searchText.isEmpty { return true }
+                if app.expandedProjects.isEmpty { return true }
                 return app.expandedProjects.contains(projectName)
             },
             set: { expanded in
@@ -207,6 +252,44 @@ private struct ProjectSection: View {
                     .background(Color.primary.opacity(0.05), in: Capsule())
             }
         }
+        .contextMenu {
+            Button {
+                app.moveProject(projectName, direction: -1)
+            } label: {
+                Label("Move Up", systemImage: "arrow.up")
+            }
+            .disabled(names.first == projectName)
+
+            Button {
+                app.moveProject(projectName, direction: 1)
+            } label: {
+                Label("Move Down", systemImage: "arrow.down")
+            }
+            .disabled(names.last == projectName)
+
+            Divider()
+
+            Button {
+                app.revealProjectInFinder(projectName)
+            } label: {
+                Label("Reveal in Finder", systemImage: "finder")
+            }
+
+            Button {
+                app.hideProject(projectName)
+            } label: {
+                Label("Hide Project", systemImage: "eye.slash")
+            }
+
+            if let space = app.removableSpace(forProject: projectName) {
+                Divider()
+                Button(role: .destructive) {
+                    app.removeSpace(space)
+                } label: {
+                    Label("Remove Folder from Library", systemImage: "folder.badge.minus")
+                }
+            }
+        }
     }
 }
 
@@ -230,6 +313,13 @@ private struct TreeNodeView: View {
         case .file(let doc):
             DocumentRow(doc: doc)
                 .tag(doc.id)
+                .contextMenu {
+                    Button {
+                        NSWorkspace.shared.activateFileViewerSelecting([doc.url])
+                    } label: {
+                        Label("Reveal in Finder", systemImage: "finder")
+                    }
+                }
         }
     }
 }
@@ -245,7 +335,10 @@ private struct FolderSection: View {
 
     private var isExpandedBinding: Binding<Bool> {
         Binding(
-            get: { app.isFolderExpanded(project: projectName, folderPath: relativePath) },
+            get: {
+                if !app.searchText.isEmpty { return true }
+                return app.isFolderExpanded(project: projectName, folderPath: relativePath)
+            },
             set: { app.setFolderExpanded(project: projectName, folderPath: relativePath, expanded: $0) }
         )
     }
@@ -271,6 +364,19 @@ private struct FolderSection: View {
             }
         }
         .id(id)
+        .contextMenu {
+            Button {
+                app.revealFolderInFinder(project: projectName, folderPath: relativePath)
+            } label: {
+                Label("Reveal in Finder", systemImage: "finder")
+            }
+
+            Button {
+                app.excludeFolder(project: projectName, folderPath: relativePath)
+            } label: {
+                Label("Hide Folder", systemImage: "eye.slash")
+            }
+        }
     }
 }
 

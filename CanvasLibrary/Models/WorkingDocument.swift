@@ -44,10 +44,64 @@ struct WorkingDocument: Identifiable, Hashable, Codable {
     let fileName: String
     /// Path relative to the project/space scan root, e.g. `"notes/plan.md"` or `"home.canvas.tsx"`.
     let relativePath: String
+    /// Owning `DocumentSpace.id` when scanned from a space; empty for ad-hoc opens.
+    var spaceID: String
     var modifiedAt: Date
     var fileSize: Int64
 
     var url: URL { URL(fileURLWithPath: urlPath) }
+
+    enum CodingKeys: String, CodingKey {
+        case id, urlPath, kind, projectName, fileName, relativePath, spaceID, modifiedAt, fileSize
+    }
+
+    init(
+        id: String,
+        urlPath: String,
+        kind: DocumentKind,
+        projectName: String,
+        fileName: String,
+        relativePath: String,
+        spaceID: String = "",
+        modifiedAt: Date,
+        fileSize: Int64
+    ) {
+        self.id = id
+        self.urlPath = urlPath
+        self.kind = kind
+        self.projectName = projectName
+        self.fileName = fileName
+        self.relativePath = relativePath
+        self.spaceID = spaceID
+        self.modifiedAt = modifiedAt
+        self.fileSize = fileSize
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        urlPath = try c.decode(String.self, forKey: .urlPath)
+        kind = try c.decode(DocumentKind.self, forKey: .kind)
+        projectName = try c.decode(String.self, forKey: .projectName)
+        fileName = try c.decode(String.self, forKey: .fileName)
+        relativePath = try c.decode(String.self, forKey: .relativePath)
+        spaceID = try c.decodeIfPresent(String.self, forKey: .spaceID) ?? ""
+        modifiedAt = try c.decode(Date.self, forKey: .modifiedAt)
+        fileSize = try c.decode(Int64.self, forKey: .fileSize)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(urlPath, forKey: .urlPath)
+        try c.encode(kind, forKey: .kind)
+        try c.encode(projectName, forKey: .projectName)
+        try c.encode(fileName, forKey: .fileName)
+        try c.encode(relativePath, forKey: .relativePath)
+        try c.encode(spaceID, forKey: .spaceID)
+        try c.encode(modifiedAt, forKey: .modifiedAt)
+        try c.encode(fileSize, forKey: .fileSize)
+    }
 
     /// Parent folder of `relativePath`, or `""` when the file sits at the project root.
     var folderPath: String {
@@ -171,7 +225,7 @@ enum LibraryFilter: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .all: return "All"
+        case .all: return "Both"
         case .canvases: return "Canvases"
         case .markdown: return "Markdown"
         }
@@ -202,6 +256,7 @@ struct DocumentSpace: Identifiable, Hashable, Codable {
 
     var url: URL { URL(fileURLWithPath: path) }
 
+    /// Opt-in factory only — not auto-injected into the library.
     static func allCursorCanvases() -> DocumentSpace {
         let root = URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent(".cursor/projects")

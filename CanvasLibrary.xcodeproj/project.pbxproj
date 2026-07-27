@@ -31,6 +31,7 @@
 		B26MONACOEDITOR000000001 /* MonacoEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B6MONACOEDITOR000000001 /* MonacoEditorView.swift */; };
 		B27EDITORHOST00000000001 /* EditorHost in Resources */ = {isa = PBXBuildFile; fileRef = C0B7EDITORHOST0000000001 /* EditorHost */; };
 		B28SOURCEREWRITE00000001 /* SourceTextRewriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B8SOURCEREWRITE00000001 /* SourceTextRewriter.swift */; };
+		B29FIRSTLAUNCH0000000001 /* FirstLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B9FIRSTLAUNCH0000000001 /* FirstLaunchView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -60,6 +61,7 @@
 		C0B6MONACOEDITOR000000001 /* MonacoEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonacoEditorView.swift; sourceTree = "<group>"; };
 		C0B7EDITORHOST0000000001 /* EditorHost */ = {isa = PBXFileReference; lastKnownFileType = folder; name = EditorHost; path = Resources/EditorHost; sourceTree = "<group>"; };
 		C0B8SOURCEREWRITE00000001 /* SourceTextRewriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceTextRewriter.swift; sourceTree = "<group>"; };
+		C0B9FIRSTLAUNCH0000000001 /* FirstLaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstLaunchView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -140,6 +142,7 @@
 				C0A2C0A2C0A24FA99A0974CF /* CanvasPreviewView.swift */,
 				E2A8186C99424FA99E61C294 /* OutlineSidebar.swift */,
 				CBB9EE3C4A9C4058B8E386CD /* EmptyStateView.swift */,
+				C0B9FIRSTLAUNCH0000000001 /* FirstLaunchView.swift */,
 				EE8CF10FAC6F402EBEA99C3A /* SettingsView.swift */,
 			);
 			path = Views;
@@ -249,6 +252,7 @@
 				B08CODEVIEW0000000000001 /* CodeView.swift in Sources */,
 				B09OUTLINESIDEBAR0000001 /* OutlineSidebar.swift in Sources */,
 				B10EMPTYSTATE00000000001 /* EmptyStateView.swift in Sources */,
+				B29FIRSTLAUNCH0000000001 /* FirstLaunchView.swift in Sources */,
 				B11SETTINGSVIEW000000001 /* SettingsView.swift in Sources */,
 				B13CANVASCOMPILER0000001 /* CanvasCompiler.swift in Sources */,
 				B28SOURCEREWRITE00000001 /* SourceTextRewriter.swift in Sources */,
@@ -388,7 +392,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 44N969GC55;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -400,7 +404,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ryanloechner.canvaslibrary;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -417,7 +421,7 @@
 				CODE_SIGN_IDENTITY = "Developer ID Application";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 44N969GC55;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -429,7 +433,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ryanloechner.canvaslibrary;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
