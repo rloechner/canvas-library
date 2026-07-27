@@ -66,6 +66,9 @@
         setFontSize(size) {
           if (editor) editor.updateOptions({ fontSize: Number(size) || 13 });
         },
+        setLineNumbers(on) {
+          if (editor) editor.updateOptions({ lineNumbers: on ? "on" : "off" });
+        },
         setLanguage(lang) {
           if (!editor || !window.monaco) return;
           const model = editor.getModel();

@@ -9,8 +9,8 @@ struct SettingsView: View {
     @EnvironmentObject private var app: AppModel
 
     private var appVersion: String {
-        let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.1"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "3"
         return "\(short) (\(build))"
     }
 
@@ -51,7 +51,7 @@ struct SettingsView: View {
                     Button {
                         app.refreshLibrary()
                     } label: {
-                        Label("Rescan", systemImage: "arrow.clockwise")
+                        Label("Rescan", systemImage: "arrow.triangle.2.circlepath")
                     }
                 }
             } header: {
@@ -74,6 +74,7 @@ struct SettingsView: View {
 
             Section("About") {
                 LabeledContent("Version", value: appVersion)
+                LabeledContent("License", value: "MIT")
                 LabeledContent("Bundle ID") {
                     Text("com.ryanloechner.canvaslibrary")
                         .font(.caption.monospaced())
@@ -83,13 +84,20 @@ struct SettingsView: View {
                 Link(destination: URL(string: "https://github.com/rloechner/canvas-library")!) {
                     Label("GitHub repository", systemImage: "link")
                 }
-                Text("Independent open-source companion for Cursor canvases and markdown. Not affiliated with Anysphere.")
+                Link(destination: URL(string: "https://github.com/rloechner/canvas-library/issues")!) {
+                    Label("Report an issue", systemImage: "exclamationmark.bubble")
+                }
+                Text("© \(Calendar.current.component(.year, from: Date())) Ryan Loechner. Independent open-source companion for Cursor canvases and markdown. Not affiliated with Anysphere.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Keyboard: ⌘O Open · ⌘⇧R Rescan · ⌘R Reload Preview · ⌥⌘F Format · ⌘S Save")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 500, height: 420)
+        .frame(width: 520, height: 460)
     }
 }

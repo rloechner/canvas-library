@@ -114,6 +114,9 @@ struct LibrarySidebar: View {
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
+        // Force List rebuild when scan results arrive (macOS can skip updates
+        // after the first async library populate).
+        .id(app.libraryEpoch)
     }
 
     private var sidebarFooter: some View {
@@ -302,6 +305,7 @@ private struct DocumentRow: View {
                 .lineLimit(1)
         }
         .padding(.vertical, 2)
+        .accessibilityLabel("\(doc.displayTitle), \(doc.kind.title)")
         .help(doc.relativePath == doc.fileName ? doc.urlPath : "\(doc.projectName)/\(doc.relativePath)")
     }
 }

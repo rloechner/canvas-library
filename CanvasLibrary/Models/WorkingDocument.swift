@@ -56,11 +56,16 @@ struct WorkingDocument: Identifiable, Hashable, Codable {
     }
 
     var displayTitle: String {
-        if fileName.hasSuffix(".canvas.tsx") {
+        let lower = fileName.lowercased()
+        if lower.hasSuffix(".canvas.tsx") {
             return String(fileName.dropLast(".canvas.tsx".count))
                 .replacingOccurrences(of: "-", with: " ")
         }
-        if fileName.hasSuffix(".md") {
+        if lower.hasSuffix(".markdown") {
+            return String(fileName.dropLast(".markdown".count))
+                .replacingOccurrences(of: "-", with: " ")
+        }
+        if lower.hasSuffix(".md") {
             return String(fileName.dropLast(3))
                 .replacingOccurrences(of: "-", with: " ")
         }

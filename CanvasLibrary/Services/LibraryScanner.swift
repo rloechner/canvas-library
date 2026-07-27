@@ -72,6 +72,11 @@ struct LibraryScanner {
 
         var docs: [WorkingDocument] = []
         let rootPath = root.path
+        let skipDirNames: Set<String> = [
+            "node_modules", ".git", "dist", "build", "DerivedData",
+            ".build", "Pods", "Carthage", ".next", "coverage",
+            "xcuserdata", ".turbo", ".cache",
+        ]
 
         for case let item as URL in enumerator {
             let url = item.standardizedFileURL
@@ -82,7 +87,12 @@ struct LibraryScanner {
                 .fileSizeKey,
             ])
 
-            if values?.isDirectory == true { continue }
+            if values?.isDirectory == true {
+                if skipDirNames.contains(url.lastPathComponent) {
+                    enumerator.skipDescendants()
+                }
+                continue
+            }
             guard values?.isRegularFile != false else { continue }
             guard let kind = kind(for: url) else { continue }
 
@@ -134,12 +144,15 @@ struct LibraryScanner {
                 return parts[(docsIdx + 1)...].joined(separator: "/")
             }
         }
-        // Numeric temp project ids
+        // Numeric temp project ids — keep enough of the id to avoid collisions.
         if raw.allSatisfy(\.isNumber) {
-            return "project \(raw.suffix(4))"
+            let tail = raw.count > 6 ? raw.suffix(6) : raw.suffix(raw.count)
+            return "project \(tail)"
         }
+        // Cursor temp workspaces under /var/folders — unique by trailing segment.
         if raw.hasPrefix("var-folders") {
-            return "temp"
+            let tail = raw.split(separator: "-").suffix(2).joined(separator: "-")
+            return tail.isEmpty ? "temp \(raw.suffix(8))" : "temp · \(tail)"
         }
         return raw
     }

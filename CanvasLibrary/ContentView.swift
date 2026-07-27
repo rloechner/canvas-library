@@ -23,9 +23,9 @@ struct ContentView: View {
                         Button {
                             app.refreshLibrary()
                         } label: {
-                            Label("Refresh", systemImage: "arrow.clockwise")
+                            Label("Rescan Library", systemImage: "arrow.triangle.2.circlepath")
                         }
-                        .help("Rescan library folders")
+                        .help("Rescan Cursor projects and custom spaces")
 
                         Button {
                             app.addFolderSpace()
@@ -42,7 +42,7 @@ struct ContentView: View {
         .toolbar { mainToolbar }
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { handleDrop($0) }
         .onAppear {
-            // Initial scan already in init; refresh keeps library warm
+            app.ensureLibraryLoaded()
         }
     }
 
@@ -69,7 +69,8 @@ struct ContentView: View {
                 onRefresh: app.refreshLibrary,
                 onAddFolder: app.addFolderSpace,
                 documentCount: app.documents.count,
-                isTargeted: isDropTargeted
+                isTargeted: isDropTargeted,
+                isScanning: app.isScanning
             )
         }
     }
@@ -93,7 +94,7 @@ struct ContentView: View {
                             .lineLimit(1)
                         kindBadge(doc.kind)
                         if app.isDirty {
-                            Text("Edited")
+                            Text("Unsaved")
                                 .font(.caption2.weight(.semibold))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -147,40 +148,15 @@ struct ContentView: View {
                 .help("Unlock preview to click and edit text in the canvas")
             }
 
-            if app.isDesignMode, app.viewMode == .preview {
-                Button { app.revertDocument() } label: {
-                    Label("Revert", systemImage: "arrow.uturn.backward")
-                }
-                .buttonStyle(.bordered)
-                .disabled(!app.isDirty)
-                .controlSize(.small)
-
-                Button { app.saveDocument() } label: {
-                    Label("Save", systemImage: "square.and.arrow.down")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!app.isDirty)
-                .controlSize(.small)
-            }
-
-            Picker("View", selection: $app.viewMode) {
-                ForEach(ViewMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 168)
-            .labelsHidden()
-            .controlSize(.small)
-            .onChange(of: app.viewMode) { _, mode in
-                if mode == .source {
-                    app.setDesignMode(false)
-                }
-            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(.bar)
+        .onChange(of: app.viewMode) { _, mode in
+            if mode == .source {
+                app.setDesignMode(false)
+            }
+        }
     }
 
     private func kindBadge(_ kind: DocumentKind) -> some View {
@@ -323,25 +299,27 @@ struct ContentView: View {
     private var statusBar: some View {
         HStack(spacing: 8) {
             if app.isFormatting || app.isCompiling || app.isScanning {
-                ProgressView().controlSize(.small)
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel(busyStatusText)
             } else if app.isDirty {
                 Circle()
                     .fill(Color.orange)
                     .frame(width: 6, height: 6)
+                    .accessibilityLabel("Unsaved changes")
                     .help("Unsaved changes")
             } else if app.openDoc != nil {
                 Circle()
                     .fill(Color.green.opacity(0.75))
                     .frame(width: 6, height: 6)
+                    .accessibilityLabel("Saved")
                     .help("Saved")
             }
 
-            if let status = app.statusMessage {
-                Text(status)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+            Text(primaryStatusText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
 
             Spacer(minLength: 8)
 
@@ -366,51 +344,77 @@ struct ContentView: View {
         .background(.bar)
     }
 
+    private var busyStatusText: String {
+        if app.isScanning { return "Scanning library…" }
+        if app.isCompiling { return "Compiling canvas…" }
+        if app.isFormatting { return "Formatting…" }
+        return app.statusMessage ?? ""
+    }
+
+    private var primaryStatusText: String {
+        if app.isScanning || app.isCompiling || app.isFormatting {
+            return busyStatusText
+        }
+        return app.statusMessage ?? ""
+    }
+
     @ToolbarContentBuilder
     private var mainToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
             Picker("View", selection: $app.viewMode) {
-                Image(systemName: "eye").tag(ViewMode.preview)
-                Image(systemName: "chevron.left.forwardslash.chevron.right").tag(ViewMode.source)
+                Image(systemName: "eye")
+                    .help("Preview")
+                    .tag(ViewMode.preview)
+                Image(systemName: "chevron.left.forwardslash.chevron.right")
+                    .help("Source")
+                    .tag(ViewMode.source)
             }
             .pickerStyle(.segmented)
             .frame(width: 90)
             .disabled(app.openDoc == nil)
+            .help("Preview or Source")
 
             Button { app.openFilePanel() } label: {
                 Label("Open", systemImage: "folder")
             }
+            .help("Open a file (⌘O)")
 
             Button { app.recompileOrRefresh() } label: {
-                Label("Reload", systemImage: "arrow.clockwise")
+                Label("Reload Preview", systemImage: "arrow.clockwise")
             }
             .disabled(app.openDoc == nil || app.isCompiling)
+            .help("Reload preview (⌘R)")
 
             Button { app.formatDocument() } label: {
                 Label("Format", systemImage: "wand.and.stars")
             }
             .disabled(app.openDoc == nil || app.isFormatting)
+            .help("Format document (⌥⌘F)")
 
             Button { app.revertDocument() } label: {
                 Label("Revert", systemImage: "arrow.uturn.backward")
             }
             .disabled(app.openDoc == nil || !app.isDirty)
+            .help("Discard unsaved changes")
 
             Button { app.saveDocument() } label: {
                 Label("Save", systemImage: "square.and.arrow.down")
             }
             .disabled(app.openDoc == nil || !app.isDirty)
             .keyboardShortcut("s", modifiers: .command)
+            .help("Save to disk (⌘S)")
 
             Button { app.copyBuffer() } label: {
                 Label("Copy", systemImage: "doc.on.doc")
             }
             .disabled(app.openDoc == nil)
+            .help("Copy source to clipboard")
 
             Button { app.revealInFinder() } label: {
                 Label("Show in Finder", systemImage: "finder")
             }
             .disabled(app.openDoc == nil)
+            .help("Reveal file in Finder")
         }
     }
 

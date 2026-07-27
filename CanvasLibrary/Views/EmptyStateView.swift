@@ -11,6 +11,7 @@ struct EmptyStateView: View {
     let onAddFolder: () -> Void
     let documentCount: Int
     let isTargeted: Bool
+    var isScanning: Bool = false
 
     var body: some View {
         ZStack {
@@ -42,7 +43,14 @@ struct EmptyStateView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    if documentCount > 0 {
+                    if isScanning && documentCount == 0 {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Scanning Cursor projects…")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if documentCount > 0 {
                         libraryPill
                     } else {
                         Text("No documents yet — scan your Cursor projects or open a file.")
@@ -59,10 +67,11 @@ struct EmptyStateView: View {
                         .keyboardShortcut("o", modifiers: .command)
 
                         Button(action: onRefresh) {
-                            Label("Scan Library", systemImage: "arrow.clockwise")
+                            Label("Rescan Library", systemImage: "arrow.triangle.2.circlepath")
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.large)
+                        .disabled(isScanning)
 
                         Button(action: onAddFolder) {
                             Label("Add Folder", systemImage: "folder.badge.plus")

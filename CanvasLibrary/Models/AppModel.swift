@@ -20,6 +20,8 @@ final class AppModel: ObservableObject {
     @Published var selectedID: WorkingDocument.ID?
     @Published private(set) var spaces: [DocumentSpace] = []
     @Published private(set) var isScanning = false
+    /// Bumps whenever the library set changes so sidebar Lists reliably re-render.
+    @Published private(set) var libraryEpoch: UInt64 = 0
 
     // MARK: - Open document buffer
 
@@ -38,8 +40,12 @@ final class AppModel: ObservableObject {
     @Published var isCompiling = false
     @Published var statusMessage: String?
     private var designRecompileWork: DispatchWorkItem?
-    @Published var fontSize: Double = 13
-    @Published var showLineNumbers = true
+    @Published var fontSize: Double {
+        didSet { defaults.set(fontSize, forKey: fontSizeKey) }
+    }
+    @Published var showLineNumbers: Bool {
+        didSet { defaults.set(showLineNumbers, forKey: lineNumbersKey) }
+    }
     @Published private(set) var canvasHostURL: URL?
     @Published private(set) var canvasWorkDirectory: URL?
     @Published private(set) var canvasReloadToken = UUID()
@@ -59,7 +65,6 @@ final class AppModel: ObservableObject {
     }
 
     private let scanner = LibraryScanner()
-    private let formatter = TSXFormatter()
     private let outlineParser = TSXOutlineParser()
     private let compiler = CanvasCompiler()
     private var lastCompileResult: CanvasCompileResult?
@@ -68,7 +73,15 @@ final class AppModel: ObservableObject {
     private let extraSpacesKey = "canvaslibrary.extraSpaces"
     private let expandedProjectsKey = "canvaslibrary.expandedProjects"
     private let expandedFoldersKey = "canvaslibrary.expandedFolders"
+    private let fontSizeKey = "canvaslibrary.fontSize"
+    private let lineNumbersKey = "canvaslibrary.showLineNumbers"
     private var didInitializeExpandedProjects = false
+    /// Avoid stacking concurrent full-library scans.
+    private var scanGeneration: UInt64 = 0
+    private var didScheduleInitialScan = false
+    /// Drop stale canvas compile results after fast document switches.
+    private var compileGeneration: UInt64 = 0
+    private var formatGeneration: UInt64 = 0
 
     /// Documents matching kind filter + search, before project grouping.
     private var matchingDocuments: [WorkingDocument] {
@@ -161,16 +174,40 @@ final class AppModel: ObservableObject {
     }
 
     init() {
+        let storedFont = defaults.object(forKey: fontSizeKey) as? Double
+        fontSize = storedFont.map { min(20, max(11, $0)) } ?? 13
+        if defaults.object(forKey: lineNumbersKey) != nil {
+            showLineNumbers = defaults.bool(forKey: lineNumbersKey)
+        } else {
+            showLineNumbers = true
+        }
         recentIDs = defaults.stringArray(forKey: recentKey) ?? []
         if let saved = defaults.stringArray(forKey: expandedProjectsKey) {
             expandedProjects = Set(saved)
-            didInitializeExpandedProjects = true
+            // Only treat as initialized if something is actually expanded;
+            // an empty saved set still needs a first-load default expand.
+            didInitializeExpandedProjects = !saved.isEmpty
         }
         if let savedFolders = defaults.stringArray(forKey: expandedFoldersKey) {
             expandedFolders = Set(savedFolders)
         }
         loadSpaces()
-        refreshLibrary()
+        // Do NOT scan here. Publishing @Published during @StateObject init
+        // often drops the first UI update — sidebar stays empty until a later
+        // user-driven refresh (e.g. Add Folder). Scan from ensureLibraryLoaded().
+    }
+
+    /// Call from the root view's onAppear. Safe to call repeatedly.
+    func ensureLibraryLoaded() {
+        if !didScheduleInitialScan {
+            didScheduleInitialScan = true
+            refreshLibrary()
+            return
+        }
+        // If the first scan somehow never applied, try again when UI appears.
+        if documents.isEmpty, !isScanning {
+            refreshLibrary()
+        }
     }
 
     /// Ensure the project (and ancestor folders) that own the current selection are expanded.
@@ -198,7 +235,11 @@ final class AppModel: ObservableObject {
         let names = orderedProjectNames
         guard !names.isEmpty else { return }
 
-        if !didInitializeExpandedProjects {
+        // Drop expansion keys for projects that no longer exist.
+        let nameSet = Set(names)
+        expandedProjects = expandedProjects.intersection(nameSet)
+
+        if !didInitializeExpandedProjects || expandedProjects.isEmpty {
             expandedProjects = [names[0]]
             didInitializeExpandedProjects = true
         }
@@ -263,28 +304,85 @@ final class AppModel: ObservableObject {
     // MARK: - Library
 
     func refreshLibrary() {
+        scanGeneration &+= 1
+        let generation = scanGeneration
         isScanning = true
         let spacesSnapshot = spaces
+
         Task.detached(priority: .userInitiated) {
             let docs = LibraryScanner().scan(spaces: spacesSnapshot)
             await MainActor.run {
-                self.documents = docs
-                self.isScanning = false
-                self.statusMessage = "\(docs.count) documents"
-                // Keep selection if still present
-                if let id = self.selectedID, !docs.contains(where: { $0.id == id }) {
-                    self.selectedID = nil
-                    self.closeDocument()
-                }
-                self.ensureExpandedProjectsAfterScan()
+                // Ignore stale scans if a newer refresh was started.
+                guard generation == self.scanGeneration else { return }
+                self.applyLibraryScan(docs)
             }
         }
     }
 
+    private func applyLibraryScan(_ docs: [WorkingDocument]) {
+        var merged = docs
+        // Keep an open file that lives outside scanned spaces visible in the list.
+        if let open = openDoc, !merged.contains(where: { $0.id == open.id }) {
+            merged.append(open)
+        }
+        documents = merged
+        isScanning = false
+        libraryEpoch &+= 1
+        statusMessage = "\(docs.count) documents"
+
+        if let id = selectedID, !merged.contains(where: { $0.id == id }) {
+            if isDirty, let open = openDoc {
+                // Never wipe an unsaved buffer just because rescan missed the path.
+                selectedID = open.id
+                if !documents.contains(where: { $0.id == open.id }) {
+                    documents.append(open)
+                }
+            } else if openDoc != nil {
+                // Keep editing even if the row fell out of the scan set.
+                selectedID = openDoc?.id
+            } else {
+                selectedID = nil
+                closeDocument()
+            }
+        }
+        ensureExpandedProjectsAfterScan()
+    }
+
     func select(_ doc: WorkingDocument) {
+        if openDoc?.id == doc.id {
+            selectedID = doc.id
+            expandAncestors(of: doc)
+            return
+        }
+        guard confirmNavigateAwayIfDirty() else {
+            selectedID = openDoc?.id
+            return
+        }
         selectedID = doc.id
         expandAncestors(of: doc)
         open(doc)
+    }
+
+    /// Save / Don't Save / Cancel when leaving a dirty buffer.
+    @discardableResult
+    func confirmNavigateAwayIfDirty() -> Bool {
+        guard isDirty else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Unsaved changes"
+        alert.informativeText = "Save changes before switching documents?"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Don't Save")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            saveDocument()
+            return !isDirty
+        case .alertSecondButtonReturn:
+            return true
+        default:
+            return false
+        }
     }
 
     func goNext() {
@@ -311,6 +409,11 @@ final class AppModel: ObservableObject {
             canvasError = nil
             viewMode = .preview
             pushRecent(doc.id)
+            // Surface externally opened files in the sidebar without a full rescan.
+            if !documents.contains(where: { $0.id == doc.id }) {
+                documents.append(doc)
+                libraryEpoch &+= 1
+            }
 
             switch doc.kind {
             case .canvas:
@@ -476,39 +579,65 @@ final class AppModel: ObservableObject {
             originalText = bufferText
             isDirty = false
             statusMessage = "Saved"
-            refreshLibrary()
+            // In-place metadata update — avoid full rescan (sidebar thrash + close races).
+            touchOpenDocumentMetadata()
         } catch {
             statusMessage = "Save failed: \(error.localizedDescription)"
             NSAlert(error: error).runModal()
         }
     }
 
+    private func touchOpenDocumentMetadata() {
+        guard var doc = openDoc else { return }
+        let values = try? doc.url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        doc.modifiedAt = values?.contentModificationDate ?? Date()
+        doc.fileSize = Int64(values?.fileSize ?? 0)
+        openDoc = doc
+        if let idx = documents.firstIndex(where: { $0.id == doc.id }) {
+            documents[idx] = doc
+        } else {
+            documents.append(doc)
+            libraryEpoch &+= 1
+        }
+    }
+
     func formatDocument() {
         guard openDoc != nil else { return }
+        formatGeneration &+= 1
+        let generation = formatGeneration
+        let kind = openDoc?.kind
+        let source = bufferText
+        let docID = openDoc?.id
         isFormatting = true
-        defer { isFormatting = false }
+        statusMessage = "Formatting…"
 
-        if openDoc?.kind == .markdown {
-            // Light markdown normalize: trim trailing spaces, ensure final newline
-            var t = bufferText.replacingOccurrences(of: "\r\n", with: "\n")
-            let lines = t.split(separator: "\n", omittingEmptySubsequences: false).map {
-                $0.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)
+        Task.detached(priority: .userInitiated) {
+            let result: FormatResult
+            if kind == .markdown {
+                var t = source.replacingOccurrences(of: "\r\n", with: "\n")
+                let lines = t.split(separator: "\n", omittingEmptySubsequences: false).map {
+                    $0.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)
+                }
+                t = lines.joined(separator: "\n")
+                if !t.hasSuffix("\n") { t += "\n" }
+                result = FormatResult(output: t, engineDescription: "Formatted markdown")
+            } else {
+                result = TSXFormatter().format(source)
             }
-            t = lines.joined(separator: "\n")
-            if !t.hasSuffix("\n") { t += "\n" }
-            updateBuffer(t)
-            markdownReloadToken = UUID()
-            editorReloadNonce = UUID()
-            statusMessage = "Formatted markdown"
-            return
-        }
 
-        let result = formatter.format(bufferText)
-        updateBuffer(result.output)
-        editorReloadNonce = UUID()
-        statusMessage = result.engineDescription
-        if openDoc?.kind == .canvas {
-            // Don't auto-compile after format — user can reload preview
+            await MainActor.run {
+                guard generation == self.formatGeneration, self.openDoc?.id == docID else {
+                    self.isFormatting = false
+                    return
+                }
+                self.updateBuffer(result.output)
+                self.editorReloadNonce = UUID()
+                if kind == .markdown {
+                    self.markdownReloadToken = UUID()
+                }
+                self.isFormatting = false
+                self.statusMessage = result.engineDescription
+            }
         }
     }
 
@@ -551,6 +680,9 @@ final class AppModel: ObservableObject {
 
     func compileCanvas() {
         guard openDoc?.kind == .canvas else { return }
+        compileGeneration &+= 1
+        let generation = compileGeneration
+        let docID = openDoc?.id
         isCompiling = true
         canvasError = nil
         statusMessage = "Compiling canvas…"
@@ -562,10 +694,15 @@ final class AppModel: ObservableObject {
             do {
                 let result = try compiler.compile(source: source, fileName: fileName)
                 await MainActor.run {
+                    guard generation == self.compileGeneration, self.openDoc?.id == docID else {
+                        compiler.cleanup(result)
+                        return
+                    }
                     self.applyCompileResult(result)
                 }
             } catch {
                 await MainActor.run {
+                    guard generation == self.compileGeneration, self.openDoc?.id == docID else { return }
                     self.isCompiling = false
                     self.canvasError = error.localizedDescription
                     self.statusMessage = "Compile failed"

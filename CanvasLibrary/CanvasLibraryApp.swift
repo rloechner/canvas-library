@@ -21,6 +21,7 @@ struct CanvasLibraryApp: App {
                 .onAppear {
                     appDelegate.bind(appModel)
                     NSApp.setActivationPolicy(.regular)
+                    appModel.ensureLibraryLoaded()
                 }
                 .onOpenURL { url in
                     openURL(url)
@@ -80,7 +81,7 @@ struct CanvasLibraryApp: App {
                 Button("Revert Changes") {
                     appModel.revertDocument()
                 }
-                .keyboardShortcut("z", modifiers: [.command, .shift])
+                // No ⌘⇧Z — that chord is system Redo / Monaco redo.
                 .disabled(appModel.openDoc == nil || !appModel.isDirty)
 
                 Button("Copy Source") {

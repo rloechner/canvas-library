@@ -169,12 +169,17 @@ struct CanvasPreviewView: NSViewRepresentable {
             case "canvasError":
                 let text = (message.body as? String) ?? String(describing: message.body)
                 let lower = text.lowercased()
-                let isFatal = lower.contains("error") || lower.contains("failed") || lower.contains("unhandled")
-                    || lower.contains("not defined") || lower.contains("syntax") || lower.contains("cannot")
-                // Ignore noisy design-mode false positives
-                if lower.contains("[warn]") { return }
-                if isFatal || !reportedFatal {
-                    if isFatal { reportedFatal = true }
+                // Console pipe tags noise as [error]/[warn] — never treat as fatal overlay.
+                if lower.hasPrefix("[error]") || lower.hasPrefix("[warn]") { return }
+                // Real host/runtime failures: unhandled rejections, window errors, load failures.
+                let isFatal = lower.contains("unhandledrejection")
+                    || lower.contains("syntaxerror")
+                    || lower.contains("not defined")
+                    || lower.contains("failed to")
+                    || lower.contains("could not")
+                    || lower.contains("cannot find")
+                if isFatal {
+                    reportedFatal = true
                     DispatchQueue.main.async { self.onError?(text) }
                 }
             case "designEdit":

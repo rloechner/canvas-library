@@ -12,6 +12,7 @@ struct MonacoEditorView: NSViewRepresentable {
     let text: String
     let language: String
     let fontSize: Double
+    let showLineNumbers: Bool
     let isDark: Bool
     let isEditable: Bool
     let documentID: String
@@ -90,6 +91,10 @@ struct MonacoEditorView: NSViewRepresentable {
                 context.coordinator.lastFontSize = fontSize
                 context.coordinator.pushFontSize(fontSize)
             }
+            if context.coordinator.lastLineNumbers != showLineNumbers {
+                context.coordinator.lastLineNumbers = showLineNumbers
+                context.coordinator.pushLineNumbers(showLineNumbers)
+            }
             context.coordinator.pushReadOnly(!isEditable)
         } else {
             // Stash for when ready fires
@@ -97,6 +102,7 @@ struct MonacoEditorView: NSViewRepresentable {
             context.coordinator.pendingLanguage = language
             context.coordinator.pendingDark = isDark
             context.coordinator.pendingFontSize = fontSize
+            context.coordinator.pendingLineNumbers = showLineNumbers
             context.coordinator.pendingEditable = isEditable
             context.coordinator.pendingDocumentID = documentID
         }
@@ -130,11 +136,13 @@ struct MonacoEditorView: NSViewRepresentable {
         var lastDocumentID: String?
         var lastDark: Bool?
         var lastFontSize: Double?
+        var lastLineNumbers: Bool?
 
         var pendingText: String?
         var pendingLanguage: String?
         var pendingDark: Bool?
         var pendingFontSize: Double?
+        var pendingLineNumbers: Bool?
         var pendingEditable: Bool?
         var pendingDocumentID: String?
 
@@ -157,6 +165,10 @@ struct MonacoEditorView: NSViewRepresentable {
                 if let size = pendingFontSize {
                     lastFontSize = size
                     pushFontSize(size)
+                }
+                if let nums = pendingLineNumbers {
+                    lastLineNumbers = nums
+                    pushLineNumbers(nums)
                 }
                 if let ed = pendingEditable { pushReadOnly(!ed) }
                 DispatchQueue.main.async { self.eval("window.CanvasLibraryEditor && window.CanvasLibraryEditor.focus()") }
@@ -196,6 +208,10 @@ struct MonacoEditorView: NSViewRepresentable {
 
         func pushFontSize(_ size: Double) {
             eval("window.CanvasLibraryEditor && window.CanvasLibraryEditor.setFontSize(\(size))")
+        }
+
+        func pushLineNumbers(_ on: Bool) {
+            eval("window.CanvasLibraryEditor && window.CanvasLibraryEditor.setLineNumbers(\(on ? "true" : "false"))")
         }
 
         func pushLanguage(_ lang: String) {

@@ -42,31 +42,14 @@
         background: rgba(59, 130, 246, 0.08);
         min-width: 1ch;
       }
-      #cs-design-banner {
-        position: fixed;
-        top: 0; left: 0; right: 0;
-        z-index: 2147483646;
-        font: 600 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        padding: 8px 14px;
-        background: rgba(37, 99, 235, 0.95);
-        color: #fff;
-        letter-spacing: 0.01em;
-        box-shadow: 0 1px 0 rgba(0,0,0,0.08);
-        display: none;
-      }
-      html.cs-design-mode #cs-design-banner { display: block; }
-      html.cs-design-mode #root { padding-top: 36px; }
+      /* Banner is shown in the native app chrome — keep DOM free of a second bar. */
+      #cs-design-banner { display: none !important; }
     `;
     document.head.appendChild(s);
   }
 
   function ensureBanner() {
-    if (document.getElementById("cs-design-banner")) return;
-    const b = document.createElement("div");
-    b.id = "cs-design-banner";
-    b.textContent =
-      "Preview unlocked — click text to edit · Esc cancels field · changes write to source";
-    document.body.prepend(b);
+    // No-op: SwiftUI shows the unlock strip; avoid double chrome.
   }
 
   function isSkippable(el) {
