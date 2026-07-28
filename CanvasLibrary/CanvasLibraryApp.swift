@@ -61,6 +61,21 @@ struct CanvasLibraryApp: App {
                 }
                 .keyboardShortcut(.downArrow, modifiers: .command)
                 .disabled(!appModel.canGoNext)
+
+                Divider()
+
+                Menu("Open Recent") {
+                    let recents = appModel.recentDocuments
+                    if recents.isEmpty {
+                        Text("No Recent Documents")
+                    } else {
+                        ForEach(recents.prefix(12)) { doc in
+                            Button("\(doc.displayTitle)  —  \(doc.projectName)") {
+                                appModel.openRecent(id: doc.id)
+                            }
+                        }
+                    }
+                }
             }
 
             CommandGroup(after: .pasteboard) {

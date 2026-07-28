@@ -12,7 +12,7 @@ Context for humans and AI agents working on this repo. **Read this first** after
 | Team | `44N969GC55` (Ryan Loechner) |
 | License | MIT |
 | Platform | macOS 14+, SwiftUI |
-| Current release | **v1.2.0** (see GitHub Releases for DMG) |
+| Current release | **v1.3.0** (see GitHub Releases for DMG) |
 
 Independent Cursor companion — **not** affiliated with Anysphere. Do not ship Cursor’s proprietary `canvas-runtime.esm.js` (gitignored; see `THIRD_PARTY.md`).
 
@@ -132,12 +132,22 @@ Thin shell-out via system `git` (`Services/GitService.swift` + `Views/GitSheets.
 - Print: render PDF data → `PDFKit` `PDFDocument.printOperation` system panel
 - Dirty buffer: Save & Continue / Continue with Buffer / Cancel
 
+### Library liveness & environment
+
+- **FSEvents watcher** (`LibraryFileWatcher`) on configured space roots; debounced partial rescan per affected space.
+- **External change**: mtime/size stamp on open/save; auto-reload when clean; banner (Reload / Keep Editing) when dirty.
+- **Canvas environment**: `CanvasEnvironment.probe()` → Node + runtime source; status-bar badge + compile error help.
+- **Runtime order**: app bundle → source tree → Cursor.app → **minimal open host** (`minimal-canvas-runtime.esm.js`, limited stubs).
+- **Outline**: toolbar Outline menu jumps to Monaco line (`pendingScrollToLine` + `revealLine`).
+- **Recents**: File menu **Open Recent** (paths in `recentIDs`).
+- Smoke: `scripts/smoke-canvas-host.sh` (host/shim/design-mode/minimal runtime/esbuild sample).
+
 ### Known gaps / dead code
 
-- `OutlineSidebar.swift` is empty; outline parse still runs for canvas but jump-to-line is not fully wired.
-- `recentDocuments` has no UI.
-- No filesystem watcher — external edits need Rescan; open-file git status refreshes on open/save/stage/commit/discard; library badges refresh after scan + those mutations.
+- Outline is canvas/TSX-oriented (not markdown headings).
+- Minimal host is intentionally limited vs Cursor component fidelity.
 - Scanner only picks `*.canvas.tsx` + md; Open panel may open plain `.tsx` as canvas.
+- Manual **Rescan** remains as recovery; watcher covers the common path.
 
 ## Build & release
 

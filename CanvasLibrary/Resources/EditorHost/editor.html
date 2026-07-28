@@ -77,6 +77,13 @@
         setReadOnly(ro) {
           if (editor) editor.updateOptions({ readOnly: !!ro });
         },
+        revealLine(line) {
+          if (!editor) return;
+          const n = Math.max(1, Number(line) || 1);
+          editor.revealLineInCenter(n);
+          editor.setPosition({ lineNumber: n, column: 1 });
+          editor.focus();
+        },
         focus() {
           editor?.focus();
         },

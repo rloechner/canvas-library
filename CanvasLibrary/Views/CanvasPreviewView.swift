@@ -118,10 +118,14 @@ struct CanvasPreviewView: NSViewRepresentable {
 
         if context.coordinator.loadedToken != reloadToken {
             context.coordinator.loadedToken = reloadToken
-            let url = URL(string: "\(canvasScheme)://preview/host.html?t=\(reloadToken.uuidString)")!
-            webView.load(URLRequest(url: url))
-        } else {
-            // Toggle design mode without full reload
+            // Capture scroll before tear-down so intentional reloads don't jump to top.
+            context.coordinator.captureScrollThenLoad(
+                webView,
+                url: URL(string: "\(canvasScheme)://preview/host.html?t=\(reloadToken.uuidString)")!
+            )
+        } else if context.coordinator.appliedDesignMode != designMode {
+            // Only toggle when the flag actually changes — re-applying every
+            // SwiftUI update re-marks the DOM and feels like a rebuild.
             context.coordinator.applyDesignMode(designMode)
         }
     }
@@ -133,8 +137,12 @@ struct CanvasPreviewView: NSViewRepresentable {
         var loadedToken: UUID?
         var schemeHandler: CanvasBundleSchemeHandler?
         var desiredDesignMode = false
+        /// Last value sent to JS — avoid re-marking editables on every body refresh.
+        var appliedDesignMode: Bool?
         weak var webView: WKWebView?
         private var reportedFatal = false
+        /// Scroll to restore after the next full host load (x, y).
+        private var pendingScroll: (x: Double, y: Double)?
 
         init(
             onReady: (() -> Void)?,
@@ -146,7 +154,53 @@ struct CanvasPreviewView: NSViewRepresentable {
             self.onDesignTextEdit = onDesignTextEdit
         }
 
+        func captureScrollThenLoad(_ webView: WKWebView, url: URL) {
+            webView.evaluateJavaScript("[window.scrollX||0, window.scrollY||0]") { [weak self] result, _ in
+                guard let self else { return }
+                if let pair = result as? [Any], pair.count == 2 {
+                    let x = (pair[0] as? NSNumber)?.doubleValue
+                        ?? (pair[0] as? Double)
+                        ?? 0
+                    let y = (pair[1] as? NSNumber)?.doubleValue
+                        ?? (pair[1] as? Double)
+                        ?? 0
+                    // Only restore if we had scrolled away from the top.
+                    if y > 8 || x > 8 {
+                        self.pendingScroll = (x, y)
+                    } else {
+                        self.pendingScroll = nil
+                    }
+                } else {
+                    self.pendingScroll = nil
+                }
+                webView.load(URLRequest(url: url))
+            }
+        }
+
+        func restorePendingScrollIfNeeded() {
+            guard let scroll = pendingScroll else { return }
+            pendingScroll = nil
+            let js = "window.scrollTo(\(scroll.x), \(scroll.y));"
+            // Double-rAF: layout may not be final on the first canvasReady tick.
+            let wrapped = """
+            (function(){
+              var x = \(scroll.x), y = \(scroll.y);
+              function go(){ window.scrollTo(x, y); }
+              go();
+              if (window.requestAnimationFrame) {
+                requestAnimationFrame(function(){ requestAnimationFrame(go); });
+              } else {
+                setTimeout(go, 50);
+              }
+            })();
+            """
+            webView?.evaluateJavaScript(wrapped, completionHandler: nil)
+            _ = js
+        }
+
         func applyDesignMode(_ on: Bool) {
+            appliedDesignMode = on
+            desiredDesignMode = on
             let flag = on ? "true" : "false"
             let js = """
             window.__csWantDesignMode = \(flag);
@@ -163,8 +217,10 @@ struct CanvasPreviewView: NSViewRepresentable {
                 reportedFatal = false
                 DispatchQueue.main.async {
                     self.onReady?()
-                    // Re-apply design mode after mount
+                    // After a full load, appliedDesignMode is stale relative to the new document.
+                    self.appliedDesignMode = nil
                     self.applyDesignMode(self.desiredDesignMode)
+                    self.restorePendingScrollIfNeeded()
                 }
             case "canvasError":
                 let text = (message.body as? String) ?? String(describing: message.body)

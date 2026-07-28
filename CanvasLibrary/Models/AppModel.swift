@@ -27,6 +27,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var libraryEpoch: UInt64 = 0
     /// Stable A–Z project names for the sidebar (published explicitly for SwiftUI).
     @Published private(set) var sidebarProjectNames: [String] = []
+    /// True while a debounced filesystem-driven refresh is pending.
+    @Published private(set) var isWatchingLibrary = false
 
     // MARK: - Open document buffer
 
@@ -43,13 +45,16 @@ final class AppModel: ObservableObject {
     /// Preview text editing (canvas): click-to-edit in the live preview.
     @Published var isDesignMode: Bool = false
     @Published private(set) var isExportingPDF = false
+    /// Disk changed under a dirty open buffer — user must choose Reload / Keep editing.
+    @Published private(set) var externalFileChangePending = false
+    /// Line to reveal in the source editor (outline jump); cleared after apply.
+    @Published var pendingScrollToLine: Int?
 
     // MARK: - Canvas / compile
 
     @Published var isFormatting = false
     @Published var isCompiling = false
     @Published var statusMessage: String?
-    private var designRecompileWork: DispatchWorkItem?
     @Published var fontSize: Double {
         didSet { defaults.set(fontSize, forKey: fontSizeKey) }
     }
@@ -63,6 +68,14 @@ final class AppModel: ObservableObject {
     @Published private(set) var markdownReloadToken = UUID()
     /// Bumps Monaco document identity after format/revert so content reloads.
     @Published var editorReloadNonce = UUID()
+    /// Node + runtime readiness (refreshed on launch / compile errors / settings).
+    @Published private(set) var canvasEnvironment = CanvasEnvironmentStatus(
+        hasNode: false,
+        nodePath: nil,
+        hasRuntime: false,
+        runtimeSource: .missing,
+        isLimitedRuntime: false
+    )
 
     // MARK: - Git (open file + library badges)
 
@@ -108,6 +121,7 @@ final class AppModel: ObservableObject {
     private let outlineParser = TSXOutlineParser()
     private let compiler = CanvasCompiler()
     private let gitService = GitService()
+    private let fileWatcher = LibraryFileWatcher()
     private var lastCompileResult: CanvasCompileResult?
     private var gitGeneration: UInt64 = 0
     private let defaults = UserDefaults.standard
@@ -131,6 +145,26 @@ final class AppModel: ObservableObject {
     /// Drop stale canvas compile results after fast document switches.
     private var compileGeneration: UInt64 = 0
     private var formatGeneration: UInt64 = 0
+    /// Debounce filesystem events before rescanning.
+    private var watchDebounceWork: DispatchWorkItem?
+    private var pendingWatchPaths: Set<String> = []
+    /// Rescan was requested while design-mode / compile held the watcher — run after idle.
+    private var deferredWatchRescan = false
+    /// mtime/size of open file at last load/save (external-change detection).
+    private var openFileDiskStamp: DiskStamp?
+    /// Ignore watcher/reload races immediately after our own save.
+    private var ignoreDiskChangesUntil: Date = .distantPast
+    private var appActivationObserver: NSObjectProtocol?
+
+    private struct DiskStamp: Equatable {
+        var modifiedAt: Date
+        var fileSize: Int64
+    }
+
+    /// True while the user is mid-edit in the live preview — must not thrash library/preview.
+    private var shouldHoldLibraryWatcher: Bool {
+        isDesignMode || isCompiling
+    }
 
     /// Documents matching kind filter + search, before project grouping.
     private var matchingDocuments: [WorkingDocument] {
@@ -282,6 +316,18 @@ final class AppModel: ObservableObject {
             filter = savedFilter
         }
         loadSpaces()
+        configureFileWatcher()
+        refreshCanvasEnvironment()
+        appActivationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                self.checkOpenDocumentExternalChange(reason: "app-active")
+            }
+        }
         // Do NOT scan here. Publishing @Published during @StateObject init
         // often drops the first UI update — sidebar stays empty until a later
         // user-driven refresh (e.g. Add Folder). Scan from ensureLibraryLoaded().
@@ -434,6 +480,132 @@ final class AppModel: ObservableObject {
         if let data = try? JSONEncoder().encode(spaces) {
             defaults.set(data, forKey: librarySpacesKey)
         }
+        restartLibraryWatcher()
+    }
+
+    // MARK: - Filesystem watcher
+
+    private func configureFileWatcher() {
+        fileWatcher.onPathsChanged = { [weak self] paths in
+            DispatchQueue.main.async {
+                self?.handleFilesystemEvents(paths)
+            }
+        }
+        restartLibraryWatcher()
+    }
+
+    private func restartLibraryWatcher() {
+        let urls = spaces.map(\.url)
+        fileWatcher.setRoots(urls)
+        isWatchingLibrary = !urls.isEmpty
+    }
+
+    private func handleFilesystemEvents(_ paths: [String]) {
+        guard !spaces.isEmpty else { return }
+
+        let normalized = paths.map { Self.standardizedPath($0) }
+
+        // Our own atomic saves briefly touch the open file — skip thrash.
+        if Date() < ignoreDiskChangesUntil {
+            if let openPath = openDoc.map({ Self.standardizedPath($0.urlPath) }) {
+                let onlyOpen = normalized.allSatisfy { path in
+                    path == openPath
+                }
+                if onlyOpen {
+                    // Stamp only — do not rescan the whole library after our save.
+                    captureOpenFileDiskStamp(for: URL(fileURLWithPath: openPath))
+                    return
+                }
+            }
+        }
+
+        // Exact open-file path only (not parent dirs — those fire constantly).
+        if let open = openDoc {
+            let openPath = Self.standardizedPath(open.urlPath)
+            if normalized.contains(openPath) {
+                checkOpenDocumentExternalChange(reason: "watch")
+            }
+        }
+
+        // Ignore noise that cannot change the library document set.
+        let relevant = normalized.filter { Self.isWatchEventRelevant($0) }
+        guard !relevant.isEmpty else { return }
+
+        for path in relevant {
+            pendingWatchPaths.insert(path)
+        }
+
+        // Design-mode + compile rewrites the live preview; library rescans steal focus,
+        // clobber status, and make Save impossible. Defer until the user finishes.
+        if shouldHoldLibraryWatcher {
+            deferredWatchRescan = true
+            return
+        }
+
+        scheduleWatchRescanFlush()
+    }
+
+    private func scheduleWatchRescanFlush() {
+        watchDebounceWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.flushPendingWatchRescan()
+        }
+        watchDebounceWork = work
+        // Longer debounce: Cursor project trees are chatty.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.25, execute: work)
+    }
+
+    /// Call when design mode / compile finishes so deferred FS events can apply.
+    private func flushDeferredWatchRescanIfNeeded() {
+        guard deferredWatchRescan || !pendingWatchPaths.isEmpty else { return }
+        guard !shouldHoldLibraryWatcher else { return }
+        deferredWatchRescan = false
+        scheduleWatchRescanFlush()
+    }
+
+    private func flushPendingWatchRescan() {
+        // Still editing in preview — hold again.
+        if shouldHoldLibraryWatcher {
+            deferredWatchRescan = true
+            return
+        }
+
+        let paths = Array(pendingWatchPaths)
+        pendingWatchPaths.removeAll()
+        deferredWatchRescan = false
+        guard !paths.isEmpty else { return }
+
+        let affected = LibraryScanner.spacesAffected(by: paths, in: spaces)
+        // Silent when the user has unsaved work so we don't replace “Unsaved changes”.
+        let status: String? = isDirty ? nil : "Library updated"
+        if affected.isEmpty {
+            // Paths didn't map (symlink /private prefix). Full rescan as recovery only.
+            refreshLibrary(status: status)
+            return
+        }
+        if affected.count == spaces.count {
+            refreshLibrary(status: status)
+            return
+        }
+        refreshLibrary(spaces: affected, status: status)
+    }
+
+    /// Paths that can add/remove/update library rows (or their parent folders).
+    private static func isWatchEventRelevant(_ path: String) -> Bool {
+        let name = (path as NSString).lastPathComponent
+        if name == ".DS_Store" || name == ".git" || name.hasPrefix("._") { return false }
+        if name == "node_modules" || name == "DerivedData" || name == ".build" { return false }
+        // Directory events: keep (new/renamed folders may contain docs).
+        var isDir: ObjCBool = false
+        if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
+            return true
+        }
+        // File deleted (path may no longer exist) — still relevant if it looked like a doc.
+        return LibraryScanner.isLibraryDocumentPath(path)
+    }
+
+    private static func standardizedPath(_ path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.path
     }
 
     /// Mark setup complete. Refresh only when spaces are configured.
@@ -449,9 +621,12 @@ final class AppModel: ObservableObject {
     /// Finish setup with an empty library (no scan thrash).
     func completeSetupEmpty() {
         spaces = []
-        persistSpaces()
+        persistSpaces() // also restarts watcher
         defaults.set(true, forKey: didCompleteSetupKey)
         needsSetup = false
+        documents = []
+        rebuildSidebarProjectNames()
+        libraryEpoch &+= 1
         debugLog("completeSetupEmpty")
     }
 
@@ -622,12 +797,18 @@ final class AppModel: ObservableObject {
 
     // MARK: - Library
 
-    func refreshLibrary() {
+    func refreshLibrary(status: String? = nil) {
+        refreshLibrary(spaces: spaces, status: status)
+    }
+
+    /// Full or partial library scan. Pass a subset of spaces for incremental refresh.
+    func refreshLibrary(spaces scanSpaces: [DocumentSpace], status: String?) {
         scanGeneration &+= 1
         let generation = scanGeneration
         isScanning = true
-        let spacesSnapshot = spaces
-        debugLog("refreshLibrary gen=\(generation) spaces=\(spacesSnapshot.map(\.path))")
+        let spacesSnapshot = scanSpaces
+        let isPartial = scanSpaces.count < spaces.count && !scanSpaces.isEmpty
+        debugLog("refreshLibrary gen=\(generation) partial=\(isPartial) spaces=\(spacesSnapshot.map(\.path))")
 
         // Prefer GCD over Task.detached so results always hop back to main
         // cleanly (detached + @MainActor apply was flaky on first window frame).
@@ -639,12 +820,16 @@ final class AppModel: ObservableObject {
                     self.debugLog("refreshLibrary ignore stale gen=\(generation) current=\(self.scanGeneration)")
                     return
                 }
-                self.applyLibraryScan(docs)
+                if isPartial {
+                    self.applyPartialLibraryScan(docs, scannedSpaces: spacesSnapshot, status: status)
+                } else {
+                    self.applyLibraryScan(docs, status: status)
+                }
             }
         }
     }
 
-    private func applyLibraryScan(_ docs: [WorkingDocument]) {
+    private func applyLibraryScan(_ docs: [WorkingDocument], status: String? = nil) {
         var merged = docs
         // Keep an open file that lives outside scanned spaces visible in the list.
         if let open = openDoc, !merged.contains(where: { $0.id == open.id }) {
@@ -657,9 +842,62 @@ final class AppModel: ObservableObject {
         rebuildSidebarProjectNames()
         isScanning = false
         libraryEpoch &+= 1
-        statusMessage = "\(docs.count) documents"
+        // Don't clobber “Unsaved changes” / design-mode status with scan chatter.
+        if let status {
+            statusMessage = status
+        } else if !isDirty && !isDesignMode {
+            statusMessage = "\(docs.count) documents"
+        }
         debugLog("applyLibraryScan scan=\(docs.count) merged=\(merged.count) projects=\(sidebarProjectNames)")
 
+        reconcileSelectionAfterScan(merged: merged)
+        ensureExpandedProjectsAfterScan()
+        if !isDesignMode {
+            refreshLibraryGitStatuses()
+            checkOpenDocumentExternalChange(reason: "scan")
+        }
+    }
+
+    /// Merge a partial space rescan into the existing library set.
+    private func applyPartialLibraryScan(
+        _ docs: [WorkingDocument],
+        scannedSpaces: [DocumentSpace],
+        status: String?
+    ) {
+        let scannedIDs = Set(scannedSpaces.map(\.id))
+        var byPath: [String: WorkingDocument] = [:]
+        for doc in documents where !scannedIDs.contains(doc.spaceID) {
+            byPath[doc.urlPath] = doc
+        }
+        for doc in docs {
+            byPath[doc.urlPath] = doc
+        }
+        // Keep open file outside scanned spaces.
+        if let open = openDoc {
+            byPath[open.urlPath] = byPath[open.urlPath] ?? open
+        }
+        let merged = LibraryScanner.sortedDocuments(Array(byPath.values))
+        objectWillChange.send()
+        documents = merged
+        rebuildSidebarProjectNames()
+        isScanning = false
+        libraryEpoch &+= 1
+        if let status {
+            statusMessage = status
+        } else if !isDirty && !isDesignMode {
+            statusMessage = "\(merged.count) documents"
+        }
+        debugLog("applyPartialLibraryScan new=\(docs.count) merged=\(merged.count)")
+
+        reconcileSelectionAfterScan(merged: merged)
+        ensureExpandedProjectsAfterScan()
+        if !isDesignMode {
+            refreshLibraryGitStatuses()
+            checkOpenDocumentExternalChange(reason: "partial-scan")
+        }
+    }
+
+    private func reconcileSelectionAfterScan(merged: [WorkingDocument]) {
         if let id = selectedID, !merged.contains(where: { $0.id == id }) {
             if isDirty, let open = openDoc {
                 // Never wipe an unsaved buffer just because rescan missed the path.
@@ -676,8 +914,6 @@ final class AppModel: ObservableObject {
                 closeDocument()
             }
         }
-        ensureExpandedProjectsAfterScan()
-        refreshLibraryGitStatuses()
     }
 
     private func rebuildSidebarProjectNames() {
@@ -802,7 +1038,10 @@ final class AppModel: ObservableObject {
             isDesignMode = parked?.isDesignMode ?? false
             outline = outlineParser.parse(text)
             canvasError = nil
+            externalFileChangePending = false
+            pendingScrollToLine = nil
             viewMode = parked?.viewMode ?? .preview
+            captureOpenFileDiskStamp(for: doc.url)
             pushRecent(doc.id)
             // Surface externally opened files in the sidebar without a full rescan.
             if !documents.contains(where: { $0.id == doc.id }) {
@@ -815,7 +1054,7 @@ final class AppModel: ObservableObject {
             clearGitState()
             switch doc.kind {
             case .canvas:
-                compileCanvas()
+                compileCanvas(force: true)
                 statusMessage = isDirty
                     ? "Restored unsaved edits · \(doc.displayTitle)"
                     : "Opened canvas · \(doc.displayTitle)"
@@ -884,6 +1123,9 @@ final class AppModel: ObservableObject {
         isDirty = false
         isDesignMode = false
         outline = []
+        externalFileChangePending = false
+        openFileDiskStamp = nil
+        pendingScrollToLine = nil
         clearCanvasHost()
         clearGitState()
         recomputeDirtyIDs()
@@ -893,17 +1135,20 @@ final class AppModel: ObservableObject {
     func setDesignMode(_ on: Bool) {
         guard openDoc?.kind == .canvas else {
             isDesignMode = false
+            flushDeferredWatchRescanIfNeeded()
             return
         }
         isDesignMode = on
         if on {
             viewMode = .preview
+            // Cancel any pending library rescan so unlock-edit isn't fighting FSEvents.
+            watchDebounceWork?.cancel()
             statusMessage = "Click text in the preview to edit · Save when ready"
         } else {
             statusMessage = isDirty ? "Unsaved changes" : "Preview editing off"
-            if openDoc?.kind == .canvas, !isCompiling {
-                scheduleDesignRecompile(immediate: true)
-            }
+            // Do NOT recompile when leaving design mode — a full WebView reload jumps
+            // scroll to the top. DOM already matches the buffer for successful edits.
+            flushDeferredWatchRescanIfNeeded()
         }
     }
 
@@ -913,35 +1158,13 @@ final class AppModel: ObservableObject {
         let result = SourceTextRewriter.replace(oldText: oldText, with: newText, in: bufferText)
         if result.replaced {
             updateBuffer(result.text)
-            editorReloadNonce = UUID()
+            // Keep the live DOM as-is (user already sees the edit). Recompiling here
+            // reloads the WebView and jumps scroll to the top — only recompile on
+            // explicit Reload Preview / open / source-driven changes.
             let multi = result.occurrenceCount > 1 ? " (first of \(result.occurrenceCount) matches)" : ""
-            statusMessage = "Preview edit → source\(multi)"
-            scheduleDesignRecompile(immediate: false)
+            statusMessage = "Preview edit → source · Save when ready\(multi)"
         } else {
             statusMessage = "Couldn't map “\(String(oldText.prefix(40)))” to source — edit in Source"
-        }
-    }
-
-    private func scheduleDesignRecompile(immediate: Bool) {
-        designRecompileWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            self?.compileCanvasPreservingDesignMode()
-        }
-        designRecompileWork = work
-        if immediate {
-            DispatchQueue.main.async(execute: work)
-        } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
-        }
-    }
-
-    /// Recompile without forcing design mode off.
-    private func compileCanvasPreservingDesignMode() {
-        let keepDesign = isDesignMode
-        compileCanvas()
-        // compileCanvas async; re-enable design after ready via canvasDidReady
-        if keepDesign {
-            isDesignMode = true
         }
     }
 
@@ -1001,11 +1224,18 @@ final class AppModel: ObservableObject {
     func saveDocument() {
         guard let doc = openDoc else { return }
         do {
+            ignoreDiskChangesUntil = Date().addingTimeInterval(1.2)
             try bufferText.write(to: doc.url, atomically: true, encoding: .utf8)
             originalText = bufferText
             isDirty = false
             parkedBuffers.removeValue(forKey: doc.id)
             recomputeDirtyIDs()
+            externalFileChangePending = false
+            captureOpenFileDiskStamp(for: doc.url)
+            // Leave unlock-preview editing — back to normal preview after a successful save.
+            if isDesignMode {
+                setDesignMode(false)
+            }
             statusMessage = "Saved"
             // In-place metadata update — avoid full rescan (sidebar thrash + close races).
             touchOpenDocumentMetadata()
@@ -1015,6 +1245,127 @@ final class AppModel: ObservableObject {
         } catch {
             statusMessage = "Save failed: \(error.localizedDescription)"
             NSAlert(error: error).runModal()
+        }
+    }
+
+    // MARK: - External file change
+
+    private func captureOpenFileDiskStamp(for url: URL) {
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        openFileDiskStamp = DiskStamp(
+            modifiedAt: values?.contentModificationDate ?? .distantPast,
+            fileSize: Int64(values?.fileSize ?? 0)
+        )
+    }
+
+    private func currentDiskStamp(for url: URL) -> DiskStamp? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        return DiskStamp(
+            modifiedAt: values?.contentModificationDate ?? .distantPast,
+            fileSize: Int64(values?.fileSize ?? 0)
+        )
+    }
+
+    /// Compare open file mtime/size to the stamp from last open/save/reload.
+    func checkOpenDocumentExternalChange(reason: String) {
+        guard let doc = openDoc else {
+            externalFileChangePending = false
+            return
+        }
+        if Date() < ignoreDiskChangesUntil { return }
+        // Never yank the buffer/preview while unlock-editing — that made Save impossible.
+        if isDesignMode {
+            return
+        }
+        guard let disk = currentDiskStamp(for: doc.url) else {
+            // File deleted under us — keep buffer; banner via status only.
+            if !isDirty {
+                statusMessage = "File missing on disk · \(doc.fileName)"
+            }
+            return
+        }
+        guard let stamp = openFileDiskStamp else {
+            openFileDiskStamp = disk
+            return
+        }
+        guard disk != stamp else {
+            if externalFileChangePending { externalFileChangePending = false }
+            return
+        }
+
+        debugLog("external change reason=\(reason) file=\(doc.fileName)")
+        if isDirty {
+            externalFileChangePending = true
+            statusMessage = "File changed on disk — reload or keep editing"
+            return
+        }
+
+        // Clean buffer: auto-reload from disk.
+        do {
+            let text = try String(contentsOf: doc.url, encoding: .utf8)
+            bufferText = text
+            originalText = text
+            isDirty = false
+            outline = outlineParser.parse(text)
+            openFileDiskStamp = disk
+            externalFileChangePending = false
+            editorReloadNonce = UUID()
+            touchOpenDocumentMetadata()
+            switch doc.kind {
+            case .canvas: compileCanvas(force: true)
+            case .markdown: markdownReloadToken = UUID()
+            }
+            statusMessage = "Reloaded from disk · \(doc.displayTitle)"
+            refreshGitState()
+        } catch {
+            statusMessage = "Disk changed but reload failed: \(error.localizedDescription)"
+            externalFileChangePending = true
+        }
+    }
+
+    /// Reload open file from disk, discarding buffer edits.
+    func reloadOpenDocumentFromDisk() {
+        guard let doc = openDoc else { return }
+        do {
+            let text = try String(contentsOf: doc.url, encoding: .utf8)
+            bufferText = text
+            originalText = text
+            isDirty = false
+            parkedBuffers.removeValue(forKey: doc.id)
+            recomputeDirtyIDs()
+            outline = outlineParser.parse(text)
+            captureOpenFileDiskStamp(for: doc.url)
+            externalFileChangePending = false
+            editorReloadNonce = UUID()
+            touchOpenDocumentMetadata()
+            switch doc.kind {
+            case .canvas: compileCanvas(force: true)
+            case .markdown: markdownReloadToken = UUID()
+            }
+            statusMessage = "Reloaded from disk"
+            refreshGitState()
+        } catch {
+            statusMessage = "Reload failed: \(error.localizedDescription)"
+            NSAlert(error: error).runModal()
+        }
+    }
+
+    /// Keep editing the buffer; update stamp so we don't re-prompt until next disk change.
+    func dismissExternalFileChange() {
+        if let doc = openDoc {
+            captureOpenFileDiskStamp(for: doc.url)
+        }
+        externalFileChangePending = false
+        statusMessage = "Keeping your edits (disk version ignored until next change)"
+    }
+
+    func refreshCanvasEnvironment() {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let status = CanvasEnvironment.probe()
+            DispatchQueue.main.async {
+                self?.canvasEnvironment = status
+            }
         }
     }
 
@@ -1405,7 +1756,7 @@ final class AppModel: ObservableObject {
                     self.editorReloadNonce = UUID()
                     if doc.kind == .canvas {
                         self.outline = self.outlineParser.parse(diskText)
-                        self.compileCanvas()
+                        self.compileCanvas(force: true)
                     } else {
                         self.markdownReloadToken = UUID()
                     }
@@ -1599,7 +1950,8 @@ final class AppModel: ObservableObject {
         guard let doc = openDoc else { return }
         switch doc.kind {
         case .canvas:
-            compileCanvas()
+            // Explicit user action — allowed even during design mode.
+            compileCanvas(force: true)
         case .markdown:
             markdownReloadToken = UUID()
             statusMessage = "Preview refreshed"
@@ -1619,12 +1971,26 @@ final class AppModel: ObservableObject {
 
     func jumpToOutline(_ node: OutlineNode) {
         viewMode = .source
+        // Bump even for the same line so Monaco re-reveals.
+        pendingScrollToLine = nil
+        DispatchQueue.main.async { [weak self] in
+            self?.pendingScrollToLine = max(1, node.line)
+        }
+        statusMessage = "Outline · \(node.name) · L\(node.line)"
     }
 
     // MARK: - Canvas compile
 
-    func compileCanvas() {
+    /// - Parameter force: When true, compile even during design mode (manual Reload / open).
+    ///   Default false so unlock-preview edits never tear down the live WebView.
+    func compileCanvas(force: Bool = false) {
         guard openDoc?.kind == .canvas else { return }
+        // Design-mode edits already live in the DOM + buffer. A recompile reloads the
+        // host page and jumps scroll to the top — never do that unless explicitly forced.
+        if isDesignMode && !force {
+            debugLog("compileCanvas skipped — design mode active (force=false)")
+            return
+        }
         compileGeneration &+= 1
         let generation = compileGeneration
         let docID = openDoc?.id
@@ -1650,8 +2016,15 @@ final class AppModel: ObservableObject {
                     guard generation == self.compileGeneration, self.openDoc?.id == docID else { return }
                     self.isCompiling = false
                     self.canvasError = error.localizedDescription
-                    self.statusMessage = "Compile failed"
-                    self.viewMode = .source
+                    self.statusMessage = self.isDirty
+                        ? "Compile failed · unsaved edits kept"
+                        : "Compile failed"
+                    self.refreshCanvasEnvironment()
+                    // Stay in preview if unlock-editing so we don't yank the user to Source.
+                    if !self.isDesignMode {
+                        self.viewMode = .source
+                    }
+                    self.flushDeferredWatchRescanIfNeeded()
                 }
             }
         }
@@ -1666,10 +2039,22 @@ final class AppModel: ObservableObject {
         canvasHostURL = result.hostURL
         canvasReloadToken = UUID()
         isCompiling = false
-        statusMessage = "Canvas ready"
+        if isDirty || isDesignMode {
+            statusMessage = isDesignMode
+                ? "Preview updated · unsaved edits — Save when ready"
+                : "Preview updated · unsaved changes"
+        } else if canvasEnvironment.isLimitedRuntime {
+            statusMessage = "Canvas ready · minimal host"
+        } else {
+            statusMessage = "Canvas ready"
+        }
         if viewMode != .source {
             viewMode = .preview
         }
+        // Compile held the library watcher; apply any deferred FSEvents now.
+        flushDeferredWatchRescanIfNeeded()
+        // Keep readiness badge honest after a successful resolve.
+        refreshCanvasEnvironment()
     }
 
     private func clearCanvasHost() {
@@ -1696,8 +2081,9 @@ final class AppModel: ObservableObject {
 
     func canvasDidFail(_ message: String) {
         canvasError = message
-        statusMessage = "Canvas error"
+        statusMessage = isDirty ? "Canvas error · unsaved edits kept" : "Canvas error"
         isCompiling = false
+        flushDeferredWatchRescanIfNeeded()
     }
 
     // MARK: - Recent
@@ -1711,7 +2097,54 @@ final class AppModel: ObservableObject {
     }
 
     var recentDocuments: [WorkingDocument] {
-        recentIDs.compactMap { id in documents.first(where: { $0.id == id }) }
+        recentIDs.compactMap { id in
+            if let doc = documents.first(where: { $0.id == id }) { return doc }
+            // Fall back to a lightweight stub so Recents still works after hide/filter.
+            let url = URL(fileURLWithPath: id)
+            guard FileManager.default.fileExists(atPath: id) else { return nil }
+            let name = url.lastPathComponent.lowercased()
+            let kind: DocumentKind =
+                (name.hasSuffix(".canvas.tsx") || name.hasSuffix(".tsx")) ? .canvas : .markdown
+            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+            return WorkingDocument(
+                id: id,
+                urlPath: id,
+                kind: kind,
+                projectName: url.deletingLastPathComponent().lastPathComponent,
+                fileName: url.lastPathComponent,
+                relativePath: url.lastPathComponent,
+                modifiedAt: values?.contentModificationDate ?? .distantPast,
+                fileSize: Int64(values?.fileSize ?? 0)
+            )
+        }
+    }
+
+    func openRecent(id: String) {
+        if let doc = recentDocuments.first(where: { $0.id == id }) {
+            select(doc)
+            return
+        }
+        let url = URL(fileURLWithPath: id)
+        guard FileManager.default.fileExists(atPath: id) else {
+            statusMessage = "Recent file no longer exists"
+            recentIDs.removeAll { $0 == id }
+            defaults.set(recentIDs, forKey: recentKey)
+            return
+        }
+        let name = url.lastPathComponent.lowercased()
+        let kind: DocumentKind =
+            (name.hasSuffix(".canvas.tsx") || name.hasSuffix(".tsx")) ? .canvas : .markdown
+        let doc = WorkingDocument(
+            id: id,
+            urlPath: id,
+            kind: kind,
+            projectName: url.deletingLastPathComponent().lastPathComponent,
+            fileName: url.lastPathComponent,
+            relativePath: url.lastPathComponent,
+            modifiedAt: Date(),
+            fileSize: 0
+        )
+        select(doc)
     }
 
     // MARK: - Helpers

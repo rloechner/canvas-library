@@ -40,6 +40,7 @@ First-party host assets that **do** ship with this project (MIT):
 - `host.html`
 - `canvas-shim.js` (maps `cursor/canvas` imports to runtime globals)
 - `design-mode.js` (unlock-preview editing bridge)
+- `minimal-canvas-runtime.esm.js` (limited open fallback when Cursor’s runtime is unavailable — not full component fidelity)
 
 ### Clean public release practice
 

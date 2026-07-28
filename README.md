@@ -77,8 +77,11 @@ Preview needs a **canvas runtime**. Resolution order:
 1. App bundle `Resources/CanvasHost/canvas-runtime.esm.js`
 2. Source tree `CanvasLibrary/Resources/CanvasHost/canvas-runtime.esm.js`
 3. Local **Cursor.app** install (see [THIRD_PARTY.md](./THIRD_PARTY.md))
+4. **Minimal open host** (`minimal-canvas-runtime.esm.js`) — limited stubs for basic canvases when Cursor’s runtime is missing
 
-First-party host files (`host.html`, `canvas-shim.js`, `design-mode.js`) always ship with this repo.
+First-party host files (`host.html`, `canvas-shim.js`, `design-mode.js`, `minimal-canvas-runtime.esm.js`) always ship with this repo.
+
+Host contract smoke test: `./scripts/smoke-canvas-host.sh`
 
 > **Do not commit or redistribute** Cursor’s proprietary `canvas-runtime.esm.js`. It is gitignored on purpose. Install Cursor (or keep a private local copy for development). Details: [THIRD_PARTY.md](./THIRD_PARTY.md).
 

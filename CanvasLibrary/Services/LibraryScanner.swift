@@ -12,21 +12,53 @@ struct LibraryScanner {
         var byPath: [String: WorkingDocument] = [:]
 
         for space in spaces {
-            let found = space.recursiveCanvases
-                ? scanCursorProjectsRoot(space.url, spaceID: space.id)
-                : scanDirectory(space.url, projectName: space.name, spaceID: space.id)
-
+            let found = scan(space: space)
             for doc in found {
                 byPath[doc.urlPath] = doc
             }
         }
 
-        return byPath.values.sorted { a, b in
+        return Self.sortedDocuments(Array(byPath.values))
+    }
+
+    /// Scan a single space (used for incremental refresh of one root).
+    func scan(space: DocumentSpace) -> [WorkingDocument] {
+        if space.recursiveCanvases {
+            return scanCursorProjectsRoot(space.url, spaceID: space.id)
+        }
+        return scanDirectory(space.url, projectName: space.name, spaceID: space.id)
+    }
+
+    /// Spaces whose roots cover any of the changed paths (including descendants).
+    static func spacesAffected(by paths: [String], in spaces: [DocumentSpace]) -> [DocumentSpace] {
+        spaces.filter { space in
+            let root = space.url.standardizedFileURL.path
+            let rootPrefix = root.hasSuffix("/") ? root : root + "/"
+            return paths.contains { raw in
+                let path = URL(fileURLWithPath: raw).standardizedFileURL.path
+                if path == root || path.hasPrefix(rootPrefix) { return true }
+                // Event is an ancestor of the space root (rare; e.g. parent folder rename).
+                let pathPrefix = path.hasSuffix("/") ? path : path + "/"
+                return root.hasPrefix(pathPrefix)
+            }
+        }
+    }
+
+    static func sortedDocuments(_ docs: [WorkingDocument]) -> [WorkingDocument] {
+        docs.sorted { a, b in
             if a.modifiedAt != b.modifiedAt {
                 return a.modifiedAt > b.modifiedAt
             }
             return a.fileName.localizedCaseInsensitiveCompare(b.fileName) == .orderedAscending
         }
+    }
+
+    /// Whether a path is a library document we care about.
+    static func isLibraryDocumentPath(_ path: String) -> Bool {
+        let name = (path as NSString).lastPathComponent.lowercased()
+        return name.hasSuffix(".canvas.tsx")
+            || name.hasSuffix(".md")
+            || name.hasSuffix(".markdown")
     }
 
     /// ~/.cursor/projects/*/canvases/**/*.{canvas.tsx,md}

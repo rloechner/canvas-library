@@ -16,6 +16,8 @@ struct MonacoEditorView: NSViewRepresentable {
     let isDark: Bool
     let isEditable: Bool
     let documentID: String
+    /// When non-nil, reveal this 1-based line in the editor.
+    var scrollToLine: Int? = nil
     var onTextChange: (String) -> Void
     var onSave: (() -> Void)?
 
@@ -96,6 +98,10 @@ struct MonacoEditorView: NSViewRepresentable {
                 context.coordinator.pushLineNumbers(showLineNumbers)
             }
             context.coordinator.pushReadOnly(!isEditable)
+            if let line = scrollToLine, line > 0, context.coordinator.lastScrolledLine != line {
+                context.coordinator.lastScrolledLine = line
+                context.coordinator.revealLine(line)
+            }
         } else {
             // Stash for when ready fires
             context.coordinator.pendingText = text
@@ -105,6 +111,7 @@ struct MonacoEditorView: NSViewRepresentable {
             context.coordinator.pendingLineNumbers = showLineNumbers
             context.coordinator.pendingEditable = isEditable
             context.coordinator.pendingDocumentID = documentID
+            context.coordinator.pendingScrollToLine = scrollToLine
         }
     }
 
@@ -137,6 +144,7 @@ struct MonacoEditorView: NSViewRepresentable {
         var lastDark: Bool?
         var lastFontSize: Double?
         var lastLineNumbers: Bool?
+        var lastScrolledLine: Int?
 
         var pendingText: String?
         var pendingLanguage: String?
@@ -145,6 +153,7 @@ struct MonacoEditorView: NSViewRepresentable {
         var pendingLineNumbers: Bool?
         var pendingEditable: Bool?
         var pendingDocumentID: String?
+        var pendingScrollToLine: Int?
 
         init(onTextChange: @escaping (String) -> Void, onSave: (() -> Void)?) {
             self.onTextChange = onTextChange
@@ -171,6 +180,10 @@ struct MonacoEditorView: NSViewRepresentable {
                     pushLineNumbers(nums)
                 }
                 if let ed = pendingEditable { pushReadOnly(!ed) }
+                if let line = pendingScrollToLine, line > 0 {
+                    lastScrolledLine = line
+                    revealLine(line)
+                }
                 DispatchQueue.main.async { self.eval("window.CanvasLibraryEditor && window.CanvasLibraryEditor.focus()") }
             case "editorChange":
                 guard let text = message.body as? String else { return }
@@ -222,6 +235,10 @@ struct MonacoEditorView: NSViewRepresentable {
 
         func pushReadOnly(_ ro: Bool) {
             eval("window.CanvasLibraryEditor && window.CanvasLibraryEditor.setReadOnly(\(ro ? "true" : "false"))")
+        }
+
+        func revealLine(_ line: Int) {
+            eval("window.CanvasLibraryEditor && window.CanvasLibraryEditor.revealLine(\(line))")
         }
 
         func eval(_ js: String) {

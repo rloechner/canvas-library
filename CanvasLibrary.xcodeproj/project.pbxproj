@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B34ENVSTATUS00000000001 /* CanvasEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D2ENVSTATUS000000001 /* CanvasEnvironment.swift */; };
+		B33FILEWATCH00000000001 /* LibraryFileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D1FILEWATCH000000001 /* LibraryFileWatcher.swift */; };
 		B01CANVASLIBRARYAPP000001 /* CanvasLibraryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D62B1219DC4B12B25E3E21 /* CanvasLibraryApp.swift */; };
 		B02CONTENTVIEW0000000001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82BC348BF3EB41FDA9FDD577 /* ContentView.swift */; };
 		B03APPMODEL0000000000001 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E3EC0A98B5741638AC321FB /* AppModel.swift */; };
@@ -68,6 +70,8 @@
 		C0C0GITSERVICE0000000001 /* GitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitService.swift; sourceTree = "<group>"; };
 		C0C1GITSHEETS00000000001 /* GitSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitSheets.swift; sourceTree = "<group>"; };
 		C0C2PDFEXPORT00000000001 /* PDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExporter.swift; sourceTree = "<group>"; };
+		C0D1FILEWATCH000000001 /* LibraryFileWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFileWatcher.swift; sourceTree = "<group>"; };
+		C0D2ENVSTATUS000000001 /* CanvasEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasEnvironment.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -133,6 +137,8 @@
 				C0B8SOURCEREWRITE00000001 /* SourceTextRewriter.swift */,
 				C0B3MDRENDER00000000001 /* MarkdownRenderer.swift */,
 				C0B2LIBSCAN000000000001 /* LibraryScanner.swift */,
+				C0D2ENVSTATUS000000001 /* CanvasEnvironment.swift */,
+				C0D1FILEWATCH000000001 /* LibraryFileWatcher.swift */,
 				C0C0GITSERVICE0000000001 /* GitService.swift */,
 				C0C2PDFEXPORT00000000001 /* PDFExporter.swift */,
 			);
@@ -272,6 +278,8 @@
 				B24MDPREVIEW00000000001 /* MarkdownPreviewView.swift in Sources */,
 				B23MDRENDER000000000001 /* MarkdownRenderer.swift in Sources */,
 				B22LIBSCAN0000000000001 /* LibraryScanner.swift in Sources */,
+				B34ENVSTATUS00000000001 /* CanvasEnvironment.swift in Sources */,
+				B33FILEWATCH00000000001 /* LibraryFileWatcher.swift in Sources */,
 				B30GITSERVICE00000000001 /* GitService.swift in Sources */,
 				B32PDFEXPORT000000000001 /* PDFExporter.swift in Sources */,
 				B31GITSHEETS000000000001 /* GitSheets.swift in Sources */,
@@ -404,7 +412,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 44N969GC55;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -416,7 +424,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ryanloechner.canvaslibrary;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -433,7 +441,7 @@
 				CODE_SIGN_IDENTITY = "Developer ID Application";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 44N969GC55;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -445,7 +453,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ryanloechner.canvaslibrary;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

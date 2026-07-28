@@ -57,6 +57,7 @@ struct SourceCodeView: View {
                 isDark: isDark,
                 isEditable: isEditable,
                 documentID: documentID,
+                scrollToLine: scrollToLine,
                 onTextChange: onTextChange,
                 onSave: onSave
             )

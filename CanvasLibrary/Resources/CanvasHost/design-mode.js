@@ -120,7 +120,8 @@
       return;
     }
     if (next === original) return;
-    // Keep DOM showing new text; host will recompile shortly
+    // Keep DOM showing new text. Host updates the TSX buffer only —
+    // do not expect a full canvas recompile (that jumps scroll to top).
     el.setAttribute(ORIG, next);
     post("designEdit", {
       oldText: original,
@@ -179,22 +180,43 @@
     }, 0);
   }
 
+  let listenersBound = false;
+
+  function bindListeners() {
+    if (listenersBound) return;
+    document.addEventListener("click", onClick, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("focusout", onFocusOut, true);
+    listenersBound = true;
+  }
+
+  function unbindListeners() {
+    if (!listenersBound) return;
+    document.removeEventListener("click", onClick, true);
+    document.removeEventListener("keydown", onKeyDown, true);
+    document.removeEventListener("focusout", onFocusOut, true);
+    listenersBound = false;
+  }
+
   window.CanvasLibraryDesign = {
     setEnabled(on) {
       ensureStyles();
       ensureBanner();
-      enabled = !!on;
+      const next = !!on;
+      // Idempotent: re-applying true while already enabled must not re-mark the tree
+      // (that runs clearMarks and feels like a full rebuild after every host UI update).
+      if (next === enabled) {
+        document.documentElement.classList.toggle("cs-design-mode", enabled);
+        return;
+      }
+      enabled = next;
       document.documentElement.classList.toggle("cs-design-mode", enabled);
       const root = document.getElementById("root") || document.body;
       if (enabled) {
         markEditables(root);
-        document.addEventListener("click", onClick, true);
-        document.addEventListener("keydown", onKeyDown, true);
-        document.addEventListener("focusout", onFocusOut, true);
+        bindListeners();
       } else {
-        document.removeEventListener("click", onClick, true);
-        document.removeEventListener("keydown", onKeyDown, true);
-        document.removeEventListener("focusout", onFocusOut, true);
+        unbindListeners();
         clearMarks(root);
       }
       post("designMode", { enabled });

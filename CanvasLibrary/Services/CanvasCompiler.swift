@@ -50,6 +50,8 @@ struct CanvasCompiler {
 
     private static let hostFileNames = ["host.html", "canvas-shim.js", "design-mode.js"]
     private static let runtimeFileName = "canvas-runtime.esm.js"
+    /// First-party limited runtime used when Cursor’s proprietary runtime is unavailable.
+    private static let minimalRuntimeFileName = "minimal-canvas-runtime.esm.js"
     private static let allAssetNames = hostFileNames + [runtimeFileName]
 
     /// Compile `source` into a self-contained host directory ready for WKWebView.
@@ -152,30 +154,67 @@ struct CanvasCompiler {
 
     // MARK: - Asset locations
 
+    struct RuntimePresence: Equatable {
+        let source: CanvasRuntimeSource
+        let directory: URL?
+    }
+
+    /// Which runtime would be used for the next compile (does not require Node).
+    static func resolveRuntimePresence() -> RuntimePresence {
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("CanvasHost"),
+           hasCompleteHostAssets(bundled) {
+            // Bundled proprietary runtime (dev convenience) vs only host files.
+            if fileExists(runtimeFileName, in: bundled), !isMinimalRuntimeMarker(in: bundled) {
+                return RuntimePresence(source: .appBundle, directory: bundled)
+            }
+        }
+
+        let sourceTree = sourceTreeCanvasHostURL()
+        if hasCompleteHostAssets(sourceTree), !isMinimalRuntimeMarker(in: sourceTree) {
+            return RuntimePresence(source: .sourceTree, directory: sourceTree)
+        }
+
+        if let supportDir = hostSupportDirectory(), let runtimeURL = cursorRuntimeURL() {
+            if let staged = stagedHostDirectory(supportDir: supportDir, runtimeURL: runtimeURL, useMinimal: false) {
+                return RuntimePresence(source: .cursorApp, directory: staged)
+            }
+        }
+
+        if let supportDir = hostSupportDirectory(),
+           let minimal = minimalRuntimeURL(supportDir: supportDir),
+           let staged = stagedHostDirectory(supportDir: supportDir, runtimeURL: minimal, useMinimal: true) {
+            return RuntimePresence(source: .minimalFallback, directory: staged)
+        }
+
+        return RuntimePresence(source: .missing, directory: nil)
+    }
+
     /// Resolve a directory that contains host.html, canvas-shim.js, design-mode.js,
     /// and canvas-runtime.esm.js.
     ///
     /// Order:
-    /// 1. App bundle `Resources/CanvasHost` (if runtime is present)
-    /// 2. Source-tree `CanvasLibrary/Resources/CanvasHost` (if runtime is present)
-    /// 3. Stage first-party host files + Cursor.app `canvas-runtime.esm.js` into a cache dir
+    /// 1. App bundle `Resources/CanvasHost` (if full Cursor runtime is present)
+    /// 2. Source-tree `CanvasLibrary/Resources/CanvasHost` (if full runtime is present)
+    /// 3. Stage first-party host files + Cursor.app `canvas-runtime.esm.js`
+    /// 4. Stage first-party host + open `minimal-canvas-runtime.esm.js` (limited)
     static func hostAssetsDirectory() -> URL? {
-        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("CanvasHost"),
-           hasCompleteHostAssets(bundled) {
-            return bundled
-        }
+        resolveRuntimePresence().directory
+    }
 
-        let sourceTree = sourceTreeCanvasHostURL()
-        if hasCompleteHostAssets(sourceTree) {
-            return sourceTree
-        }
+    private static func fileExists(_ name: String, in dir: URL) -> Bool {
+        FileManager.default.fileExists(atPath: dir.appendingPathComponent(name).path)
+    }
 
-        // First-party host pages without a bundled runtime: pair with Cursor install.
-        guard let supportDir = hostSupportDirectory(),
-              let runtimeURL = cursorRuntimeURL() else {
-            return nil
-        }
-        return stagedHostDirectory(supportDir: supportDir, runtimeURL: runtimeURL)
+    /// Staged/minimal hosts write a marker so we don't mis-label them as Cursor runtime.
+    private static func isMinimalRuntimeMarker(in dir: URL) -> Bool {
+        FileManager.default.fileExists(
+            atPath: dir.appendingPathComponent(".canvas-library-minimal-runtime").path
+        )
+    }
+
+    private static func minimalRuntimeURL(supportDir: URL) -> URL? {
+        let url = supportDir.appendingPathComponent(minimalRuntimeFileName)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
     /// Directory with first-party host files (runtime optional).
@@ -235,16 +274,21 @@ struct CanvasCompiler {
         return nil
     }
 
-    /// Copy first-party host files + Cursor runtime into a stable cache directory
+    /// Copy first-party host files + a runtime into a stable cache directory
     /// so compile() can copy a complete set in one place.
-    private static func stagedHostDirectory(supportDir: URL, runtimeURL: URL) -> URL? {
+    private static func stagedHostDirectory(
+        supportDir: URL,
+        runtimeURL: URL,
+        useMinimal: Bool
+    ) -> URL? {
         let fm = FileManager.default
         guard let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else {
             return nil
         }
+        let stageName = useMinimal ? "CanvasHost-minimal" : "CanvasHost"
         let stage = caches
             .appendingPathComponent("CanvasLibrary", isDirectory: true)
-            .appendingPathComponent("CanvasHost", isDirectory: true)
+            .appendingPathComponent(stageName, isDirectory: true)
 
         do {
             try fm.createDirectory(at: stage, withIntermediateDirectories: true)
@@ -275,6 +319,15 @@ struct CanvasCompiler {
                     try fm.removeItem(at: stagedRuntime)
                 }
                 try fm.copyItem(at: runtimeURL, to: stagedRuntime)
+            }
+
+            let marker = stage.appendingPathComponent(".canvas-library-minimal-runtime")
+            if useMinimal {
+                if !fm.fileExists(atPath: marker.path) {
+                    try Data().write(to: marker)
+                }
+            } else if fm.fileExists(atPath: marker.path) {
+                try fm.removeItem(at: marker)
             }
 
             guard hasCompleteHostAssets(stage) else { return nil }

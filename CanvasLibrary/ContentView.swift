@@ -11,7 +11,6 @@ struct ContentView: View {
     @EnvironmentObject private var app: AppModel
     @Environment(\.colorScheme) private var colorScheme
     @State private var isDropTargeted = false
-    @State private var scrollToLine: Int?
     @State private var sidebarWidth: CGFloat = 300
 
     var body: some View {
@@ -34,6 +33,7 @@ struct ContentView: View {
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { handleDrop($0) }
         .onAppear {
             app.ensureLibraryLoaded()
+            app.refreshCanvasEnvironment()
         }
         .sheet(isPresented: Binding(
             get: { app.needsSetup },
@@ -97,7 +97,7 @@ struct ContentView: View {
         } else {
             EmptyStateView(
                 onOpen: app.openFilePanel,
-                onRefresh: app.refreshLibrary,
+                onRefresh: { app.refreshLibrary() },
                 onAddFolder: app.addFolderSpace,
                 documentCount: app.documents.count,
                 isTargeted: isDropTargeted,
@@ -107,7 +107,11 @@ struct ContentView: View {
     }
 
     private var documentHeader: some View {
-        HStack(spacing: 12) {
+        VStack(spacing: 0) {
+            if app.externalFileChangePending {
+                externalChangeBanner
+            }
+            HStack(spacing: 12) {
             if let doc = app.openDoc {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -176,17 +180,17 @@ struct ContentView: View {
                 .keyboardShortcut("s", modifiers: .command)
             }
 
-            if app.isInGitRepo {
+            // Only show git actions when the open file is actually inside a worktree.
+            // Cursor cache canvases often resolve a repo root but live outside it —
+            // disabled chrome there was more confusing than helpful.
+            if app.isInGitRepo, app.gitFileInWorktree {
                 HStack(spacing: 4) {
                     Button {
                         app.presentGitDiff()
                     } label: {
                         Label("Diff", systemImage: "doc.text.magnifyingglass")
                     }
-                    .help(app.gitFileInWorktree
-                          ? "Show git diff for this file"
-                          : "Repo linked, but this file is outside the worktree (e.g. Cursor cache)")
-                    .disabled(!app.gitFileInWorktree)
+                    .help("Show git diff for this file")
 
                     // After save: file may still be modified vs HEAD — offer discard.
                     if app.canDiscardGitChanges {
@@ -213,9 +217,7 @@ struct ContentView: View {
                         } label: {
                             Label("Stage", systemImage: "plus.circle")
                         }
-                        .help(app.gitFileInWorktree
-                              ? "Stage this file"
-                              : "File is outside the git worktree — add a real project folder to track it")
+                        .help("Stage this file")
                         .disabled(app.isGitBusy || !app.canStageCurrentFile)
                     }
 
@@ -224,9 +226,7 @@ struct ContentView: View {
                     } label: {
                         Label("Commit", systemImage: "checkmark.circle")
                     }
-                    .help(app.gitFileInWorktree
-                          ? "Commit this file"
-                          : "File is outside the git worktree")
+                    .help("Commit this file")
                     .disabled(app.isGitBusy || !app.canCommitCurrentFile)
                 }
                 .buttonStyle(.bordered)
@@ -268,15 +268,39 @@ struct ContentView: View {
                 .help("Click text in the live preview to edit source (then Save)")
             }
 
+            } // HStack
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(.bar)
+            .onChange(of: app.viewMode) { _, mode in
+                if mode == .source {
+                    app.setDesignMode(false)
+                }
+            }
+        } // VStack
+    }
+
+    private var externalChangeBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text("This file changed on disk while you have unsaved edits.")
+                .font(.caption)
+                .foregroundStyle(.primary)
+            Spacer(minLength: 8)
+            Button("Keep Editing") {
+                app.dismissExternalFileChange()
+            }
+            .controlSize(.small)
+            Button("Reload from Disk") {
+                app.reloadOpenDocumentFromDisk()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(.bar)
-        .onChange(of: app.viewMode) { _, mode in
-            if mode == .source {
-                app.setDesignMode(false)
-            }
-        }
+        .padding(.vertical, 8)
+        .background(Color.orange.opacity(0.12))
     }
 
     private func kindBadge(_ kind: DocumentKind) -> some View {
@@ -307,7 +331,7 @@ struct ContentView: View {
                     language: app.editorLanguage,
                     fontSize: app.fontSize,
                     showLineNumbers: app.showLineNumbers,
-                    scrollToLine: scrollToLine,
+                    scrollToLine: app.pendingScrollToLine,
                     isEditable: true,
                     isDark: colorScheme == .dark,
                     isDirty: app.isDirty,
@@ -358,6 +382,9 @@ struct ContentView: View {
                         app.applyPreviewTextEdit(oldText: old, newText: new)
                     }
                 )
+                // Stable identity for the open doc — do not key on dirty/status or the
+                // WebView remounts (full rebuild + scroll jump) on every buffer edit.
+                .id("canvas-preview-\(app.openDoc?.id ?? "none")")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 if app.isCompiling {
@@ -381,10 +408,20 @@ struct ContentView: View {
                                 .frame(maxWidth: 560, alignment: .leading)
                         }
                         .frame(maxHeight: 140)
+                        if !app.canvasEnvironment.isReadyForCanvasPreview {
+                            Text(app.canvasEnvironment.shortSummary)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: 420)
+                        }
                         HStack {
                             Button("Show Source") { app.viewMode = .source }
-                            Button("Retry") { app.compileCanvas() }
-                                .buttonStyle(.borderedProminent)
+                            Button("Retry") {
+                                app.refreshCanvasEnvironment()
+                                app.compileCanvas(force: true)
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
                     }
                     .padding(24)
@@ -425,7 +462,20 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
 
-            if app.isInGitRepo, let branch = app.gitBranch {
+            if app.openDoc?.kind == .canvas {
+                Text("·")
+                    .foregroundStyle(.quaternary)
+                Image(systemName: app.canvasEnvironment.isReadyForCanvasPreview
+                      ? (app.canvasEnvironment.isLimitedRuntime ? "cube.transparent" : "cube")
+                      : "exclamationmark.triangle")
+                    .font(.caption2)
+                    .foregroundStyle(app.canvasEnvironment.isReadyForCanvasPreview
+                                     ? (app.canvasEnvironment.isLimitedRuntime ? Color.orange : Color.secondary)
+                                     : Color.orange)
+                    .help(app.canvasEnvironment.helpDetail)
+            }
+
+            if app.isInGitRepo, app.gitFileInWorktree, let branch = app.gitBranch {
                 Text("·")
                     .foregroundStyle(.quaternary)
                 Label(branch, systemImage: "arrow.triangle.branch")
@@ -434,9 +484,7 @@ struct ContentView: View {
                     .lineLimit(1)
                     .help({
                         var h = app.gitRootPath.map { "Git: \($0)" } ?? "Git"
-                        if !app.gitFileInWorktree {
-                            h += " — this file is outside the worktree (Cursor cache paths often are). Add your real project folder as a library space to stage/commit canvases from disk."
-                        } else if let label = app.gitFileStatusLabel {
+                        if let label = app.gitFileStatusLabel {
                             h += " · \(label)"
                         }
                         return h
@@ -519,6 +567,24 @@ struct ContentView: View {
             .disabled(app.openDoc == nil || app.isFormatting)
             .help("Format document (⌥⌘F)")
 
+            if app.openDoc?.kind == .canvas {
+                Menu {
+                    if app.outline.isEmpty {
+                        Text("No outline symbols")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(flattenedOutline(app.outline), id: \.id) { item in
+                            Button("\(String(repeating: "  ", count: item.depth))\(item.node.name)  L\(item.node.line)") {
+                                app.jumpToOutline(item.node)
+                            }
+                        }
+                    }
+                } label: {
+                    Label("Outline", systemImage: "list.bullet.indent")
+                }
+                .help("Jump to a canvas component in Source")
+            }
+
             Button {
                 if app.isDirty {
                     app.revertDocument()
@@ -567,6 +633,21 @@ struct ContentView: View {
             .disabled(app.openDoc == nil)
             .help("Reveal file in Finder")
         }
+    }
+
+    private struct FlatOutlineItem: Identifiable {
+        var id: String { "\(node.id)-\(depth)" }
+        let node: OutlineNode
+        let depth: Int
+    }
+
+    private func flattenedOutline(_ nodes: [OutlineNode], depth: Int = 0) -> [FlatOutlineItem] {
+        var items: [FlatOutlineItem] = []
+        for node in nodes {
+            items.append(FlatOutlineItem(node: node, depth: depth))
+            items.append(contentsOf: flattenedOutline(node.children, depth: depth + 1))
+        }
+        return items
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
