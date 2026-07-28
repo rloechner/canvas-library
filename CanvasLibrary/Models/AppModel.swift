@@ -36,8 +36,13 @@ final class AppModel: ObservableObject {
     @Published var viewMode: ViewMode = .preview
     @Published var outline: [OutlineNode] = []
     @Published var isDirty: Bool = false
-    /// Unlock preview: click text in the rendered canvas to edit source.
+    /// IDs (paths) with unsaved edits — including the open doc and parked buffers.
+    @Published private(set) var dirtyDocumentIDs: Set<String> = []
+    /// Parked in-memory edits when switching away from a dirty document.
+    private var parkedBuffers: [String: ParkedBuffer] = [:]
+    /// Preview text editing (canvas): click-to-edit in the live preview.
     @Published var isDesignMode: Bool = false
+    @Published private(set) var isExportingPDF = false
 
     // MARK: - Canvas / compile
 
@@ -58,6 +63,24 @@ final class AppModel: ObservableObject {
     @Published private(set) var markdownReloadToken = UUID()
     /// Bumps Monaco document identity after format/revert so content reloads.
     @Published var editorReloadNonce = UUID()
+
+    // MARK: - Git (open file + library badges)
+
+    @Published private(set) var gitRootPath: String?
+    @Published private(set) var gitBranch: String?
+    @Published private(set) var gitFileStatus: GitFileStatus = .unknown
+    /// False when git root was found (e.g. real project) but open file is outside that worktree
+    /// (common for Cursor `~/.cursor/projects/.../canvases` files).
+    @Published private(set) var gitFileInWorktree = false
+    @Published private(set) var isGitBusy = false
+    @Published var showGitDiffSheet = false
+    @Published var showGitCommitSheet = false
+    @Published private(set) var gitDiffText = ""
+    @Published var gitDiffShowsStaged = false
+    @Published var gitCommitMessage = ""
+    /// Document path IDs with non-clean git status (for sidebar badges).
+    @Published private(set) var gitStatusByDocumentID: [String: GitFileStatus] = [:]
+    private var libraryGitGeneration: UInt64 = 0
 
     @Published private(set) var recentIDs: [String] = []
     /// Project names currently expanded in the sidebar outline.
@@ -84,7 +107,9 @@ final class AppModel: ObservableObject {
     private let scanner = LibraryScanner()
     private let outlineParser = TSXOutlineParser()
     private let compiler = CanvasCompiler()
+    private let gitService = GitService()
     private var lastCompileResult: CanvasCompileResult?
+    private var gitGeneration: UInt64 = 0
     private let defaults = UserDefaults.standard
     private let recentKey = "canvaslibrary.recentIDs"
     /// Legacy key — read-only for migration; new saves use librarySpacesKey.
@@ -652,6 +677,7 @@ final class AppModel: ObservableObject {
             }
         }
         ensureExpandedProjectsAfterScan()
+        refreshLibraryGitStatuses()
     }
 
     private func rebuildSidebarProjectNames() {
@@ -669,31 +695,80 @@ final class AppModel: ObservableObject {
             expandAncestors(of: doc)
             return
         }
-        guard confirmNavigateAwayIfDirty() else {
-            selectedID = openDoc?.id
-            return
-        }
+        // Park unsaved work — do not discard. Sidebar shows a dirty dot.
+        parkCurrentDocument()
         selectedID = doc.id
         expandAncestors(of: doc)
         open(doc)
     }
 
-    /// Save / Don't Save / Cancel when leaving a dirty buffer.
+    /// Whether a library row should show an unsaved alert dot.
+    func hasUnsavedEdits(forDocumentID id: String) -> Bool {
+        dirtyDocumentIDs.contains(id)
+    }
+
+    /// Git status for a library row (if known and non-clean).
+    func gitStatus(forDocumentID id: String) -> GitFileStatus? {
+        if let open = openDoc, open.id == id, gitFileStatus.isChanged {
+            return gitFileStatus
+        }
+        guard let status = gitStatusByDocumentID[id], status.isChanged else { return nil }
+        return status
+    }
+
+    private struct ParkedBuffer {
+        var text: String
+        var originalText: String
+        var viewMode: ViewMode
+        var isDesignMode: Bool
+    }
+
+    /// Stash the open buffer so the user can switch away and return to edits.
+    private func parkCurrentDocument() {
+        guard let doc = openDoc else { return }
+        if isDirty {
+            parkedBuffers[doc.id] = ParkedBuffer(
+                text: bufferText,
+                originalText: originalText,
+                viewMode: viewMode,
+                isDesignMode: isDesignMode
+            )
+        } else {
+            parkedBuffers.removeValue(forKey: doc.id)
+        }
+        recomputeDirtyIDs()
+    }
+
+    private func recomputeDirtyIDs() {
+        var ids = Set(parkedBuffers.keys.filter { parkedBuffers[$0]?.text != parkedBuffers[$0]?.originalText })
+        if let open = openDoc, isDirty {
+            ids.insert(open.id)
+        }
+        dirtyDocumentIDs = ids
+    }
+
+    /// Save / Discard / Cancel when an action requires a clean buffer (e.g. git stage).
     @discardableResult
     func confirmNavigateAwayIfDirty() -> Bool {
         guard isDirty else { return true }
         let alert = NSAlert()
         alert.messageText = "Unsaved changes"
-        alert.informativeText = "Save changes before switching documents?"
+        alert.informativeText = "Save changes before continuing?"
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Don't Save")
+        alert.addButton(withTitle: "Discard")
         alert.addButton(withTitle: "Cancel")
         switch alert.runModal() {
         case .alertFirstButtonReturn:
             saveDocument()
             return !isDirty
         case .alertSecondButtonReturn:
+            if let id = openDoc?.id {
+                parkedBuffers.removeValue(forKey: id)
+            }
+            bufferText = originalText
+            isDirty = false
+            recomputeDirtyIDs()
             return true
         default:
             return false
@@ -714,15 +789,20 @@ final class AppModel: ObservableObject {
 
     func open(_ doc: WorkingDocument) {
         do {
-            let text = try String(contentsOf: doc.url, encoding: .utf8)
+            // Restore parked edits if any; otherwise load from disk.
+            let parked = parkedBuffers[doc.id]
+            let diskText = try String(contentsOf: doc.url, encoding: .utf8)
+            let text = parked?.text ?? diskText
+            let original = parked?.originalText ?? diskText
+
             openDoc = doc
             bufferText = text
-            originalText = text
-            isDirty = false
-            isDesignMode = false
+            originalText = original
+            isDirty = text != original
+            isDesignMode = parked?.isDesignMode ?? false
             outline = outlineParser.parse(text)
             canvasError = nil
-            viewMode = .preview
+            viewMode = parked?.viewMode ?? .preview
             pushRecent(doc.id)
             // Surface externally opened files in the sidebar without a full rescan.
             if !documents.contains(where: { $0.id == doc.id }) {
@@ -730,16 +810,26 @@ final class AppModel: ObservableObject {
                 rebuildSidebarProjectNames()
                 libraryEpoch &+= 1
             }
+            recomputeDirtyIDs()
 
+            clearGitState()
             switch doc.kind {
             case .canvas:
                 compileCanvas()
-                statusMessage = "Opened canvas · \(doc.displayTitle)"
+                statusMessage = isDirty
+                    ? "Restored unsaved edits · \(doc.displayTitle)"
+                    : "Opened canvas · \(doc.displayTitle)"
             case .markdown:
                 clearCanvasHost()
                 markdownReloadToken = UUID()
-                statusMessage = "Opened markdown · \(doc.displayTitle)"
+                statusMessage = isDirty
+                    ? "Restored unsaved edits · \(doc.displayTitle)"
+                    : "Opened markdown · \(doc.displayTitle)"
             }
+            if isDesignMode, doc.kind == .canvas {
+                viewMode = .preview
+            }
+            refreshGitState()
         } catch {
             statusMessage = "Could not open: \(error.localizedDescription)"
             NSAlert(error: error).runModal()
@@ -787,6 +877,7 @@ final class AppModel: ObservableObject {
     }
 
     func closeDocument() {
+        parkCurrentDocument()
         openDoc = nil
         bufferText = ""
         originalText = ""
@@ -794,8 +885,11 @@ final class AppModel: ObservableObject {
         isDesignMode = false
         outline = []
         clearCanvasHost()
+        clearGitState()
+        recomputeDirtyIDs()
     }
 
+    /// Enable click-to-edit on the live canvas preview (writes through to source).
     func setDesignMode(_ on: Bool) {
         guard openDoc?.kind == .canvas else {
             isDesignMode = false
@@ -804,10 +898,9 @@ final class AppModel: ObservableObject {
         isDesignMode = on
         if on {
             viewMode = .preview
-            statusMessage = "Preview unlocked — click text to edit"
+            statusMessage = "Click text in the preview to edit · Save when ready"
         } else {
-            statusMessage = isDirty ? "Unsaved changes" : "Preview locked"
-            // Refresh preview from current buffer when locking
+            statusMessage = isDirty ? "Unsaved changes" : "Preview editing off"
             if openDoc?.kind == .canvas, !isCompiling {
                 scheduleDesignRecompile(immediate: true)
             }
@@ -859,12 +952,25 @@ final class AppModel: ObservableObject {
         if openDoc?.kind == .canvas {
             outline = outlineParser.parse(newText)
         }
+        // Keep parked snapshot in sync if we re-park later.
+        if let id = openDoc?.id, isDirty {
+            parkedBuffers[id] = ParkedBuffer(
+                text: bufferText,
+                originalText: originalText,
+                viewMode: viewMode,
+                isDesignMode: isDesignMode
+            )
+        } else if let id = openDoc?.id {
+            parkedBuffers.removeValue(forKey: id)
+        }
+        recomputeDirtyIDs()
         if isDirty {
             statusMessage = "Unsaved changes"
         }
     }
 
     /// Discard buffer edits and restore last loaded/saved text.
+    /// (Does not touch git — use `discardGitChanges()` to restore the last commit.)
     func revertDocument() {
         guard isDirty else { return }
         let alert = NSAlert()
@@ -876,6 +982,10 @@ final class AppModel: ObservableObject {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         bufferText = originalText
         isDirty = false
+        if let id = openDoc?.id {
+            parkedBuffers.removeValue(forKey: id)
+        }
+        recomputeDirtyIDs()
         if openDoc?.kind == .canvas {
             outline = outlineParser.parse(originalText)
         } else {
@@ -883,7 +993,7 @@ final class AppModel: ObservableObject {
         }
         // Bump identity so Monaco reloads content even if string equal-check races
         editorReloadNonce = UUID()
-        statusMessage = "Reverted"
+        statusMessage = "Reverted unsaved changes"
     }
 
     // MARK: - Save / format
@@ -894,12 +1004,530 @@ final class AppModel: ObservableObject {
             try bufferText.write(to: doc.url, atomically: true, encoding: .utf8)
             originalText = bufferText
             isDirty = false
+            parkedBuffers.removeValue(forKey: doc.id)
+            recomputeDirtyIDs()
             statusMessage = "Saved"
             // In-place metadata update — avoid full rescan (sidebar thrash + close races).
             touchOpenDocumentMetadata()
+            refreshGitState()
+            // Sidebar M/U badges update after disk write.
+            refreshLibraryGitStatuses()
         } catch {
             statusMessage = "Save failed: \(error.localizedDescription)"
             NSAlert(error: error).runModal()
+        }
+    }
+
+    /// Export the current document to a PDF chosen by the user.
+    func exportPDF() {
+        guard let doc = openDoc else { return }
+        if !confirmProceedIfDirty(action: "export") { return }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.nameFieldStringValue = sanitizedFileBaseName(doc.displayTitle) + ".pdf"
+        panel.canCreateDirectories = true
+        panel.title = "Export PDF"
+        panel.message = "Save a PDF of the current document preview (or source fallback)."
+        guard panel.runModal() == .OK, let dest = panel.url else { return }
+
+        isExportingPDF = true
+        statusMessage = "Exporting PDF…"
+        let title = doc.displayTitle
+
+        Task { @MainActor in
+            defer { self.isExportingPDF = false }
+            do {
+                let data = try await renderCurrentDocumentPDF()
+                try data.write(to: dest, options: .atomic)
+                self.statusMessage = "Exported PDF · \(dest.lastPathComponent)"
+                NSWorkspace.shared.activateFileViewerSelecting([dest])
+            } catch {
+                self.statusMessage = "PDF export failed: \(error.localizedDescription)"
+                NSAlert(error: error).runModal()
+            }
+        }
+    }
+
+    /// Print the current document (renders the same PDF pipeline, then system print panel).
+    func printDocument() {
+        guard openDoc != nil else { return }
+        if !confirmProceedIfDirty(action: "print") { return }
+
+        isExportingPDF = true
+        statusMessage = "Preparing print…"
+        let title = openDoc?.displayTitle ?? "Document"
+
+        Task { @MainActor in
+            defer { self.isExportingPDF = false }
+            do {
+                let data = try await renderCurrentDocumentPDF()
+                try PDFExporter.presentPrintPanel(for: data, jobTitle: title)
+                self.statusMessage = "Print dialog closed"
+            } catch {
+                self.statusMessage = "Print failed: \(error.localizedDescription)"
+                NSAlert(error: error).runModal()
+            }
+        }
+    }
+
+    /// Shared PDF render path for export + print.
+    private func renderCurrentDocumentPDF() async throws -> Data {
+        guard let doc = openDoc else { throw PDFExporterError.noContent }
+        let kind = doc.kind
+        let text = bufferText
+        let title = doc.displayTitle
+        let hostURL = canvasHostURL
+        let workDir = canvasWorkDirectory
+
+        switch kind {
+        case .markdown:
+            return try await PDFExporter.exportMarkdown(text, title: title)
+        case .canvas:
+            if let hostURL, let workDir {
+                do {
+                    return try await PDFExporter.pdfData(
+                        fromFileURL: hostURL,
+                        allowingReadAccessTo: workDir,
+                        settle: 1.0
+                    )
+                } catch {
+                    return try await PDFExporter.exportSource(text, title: title)
+                }
+            }
+            return try await PDFExporter.exportSource(text, title: title)
+        }
+    }
+
+    /// Ask to save when dirty before export/print. Returns false if the user cancelled.
+    private func confirmProceedIfDirty(action: String) -> Bool {
+        guard isDirty else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Save before \(action)?"
+        alert.informativeText = "Unsaved edits are included from the editor buffer. Save to disk first if you want the file and export to match."
+        alert.addButton(withTitle: "Save & Continue")
+        alert.addButton(withTitle: "Continue with Buffer")
+        alert.addButton(withTitle: "Cancel")
+        let r = alert.runModal()
+        if r == .alertThirdButtonReturn { return false }
+        if r == .alertFirstButtonReturn {
+            saveDocument()
+            if isDirty { return false }
+        }
+        return true
+    }
+
+    private func sanitizedFileBaseName(_ title: String) -> String {
+        let cleaned = title
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? "Document" : cleaned
+    }
+
+    // MARK: - Git
+
+    var isInGitRepo: Bool { gitRootPath != nil }
+
+    var gitFileStatusLabel: String? { gitFileStatus.capsuleTitle }
+
+    var canStageCurrentFile: Bool {
+        guard isInGitRepo, gitFileInWorktree, openDoc != nil, !isGitBusy else { return false }
+        return gitFileStatus.hasWorkTreeChanges || gitFileStatus.isUntracked
+    }
+
+    var canUnstageCurrentFile: Bool {
+        guard isInGitRepo, gitFileInWorktree, openDoc != nil, !isGitBusy else { return false }
+        return gitFileStatus.isStaged
+    }
+
+    var canCommitCurrentFile: Bool {
+        guard isInGitRepo, gitFileInWorktree, openDoc != nil, !isGitBusy else { return false }
+        return gitFileStatus.isStaged || gitFileStatus.hasWorkTreeChanges || gitFileStatus.isUntracked
+    }
+
+    /// True when the open file can be restored to the last commit (after save, still modified).
+    var canDiscardGitChanges: Bool {
+        guard isInGitRepo, gitFileInWorktree, openDoc != nil, !isGitBusy else { return false }
+        return gitFileStatus.canDiscardToHEAD
+    }
+
+    private func clearGitState() {
+        gitGeneration &+= 1
+        gitRootPath = nil
+        gitBranch = nil
+        gitFileStatus = .unknown
+        gitFileInWorktree = false
+        isGitBusy = false
+        gitDiffText = ""
+        gitCommitMessage = ""
+        showGitDiffSheet = false
+        showGitCommitSheet = false
+    }
+
+    /// Refresh branch + porcelain status for the open file.
+    func refreshGitState() {
+        guard let doc = openDoc else {
+            clearGitState()
+            return
+        }
+        gitGeneration &+= 1
+        let generation = gitGeneration
+        let fileURL = doc.url
+        let docID = doc.id
+        isGitBusy = true
+
+        Task.detached(priority: .utility) { [gitService] in
+            let root = gitService.findGitRoot(startingAt: fileURL)
+            var branch: String?
+            var status: GitFileStatus = .unknown
+            var inTree = false
+            if let root {
+                branch = gitService.currentBranch(repoRoot: root)
+                if let rel = gitService.relativePath(fileURL: fileURL, repoRoot: root) {
+                    inTree = true
+                    status = gitService.fileStatus(repoRoot: root, pathRelativeToRoot: rel)
+                } else {
+                    // e.g. Cursor cache file linked to a real project repo
+                    inTree = false
+                    status = .unknown
+                }
+            }
+            await MainActor.run {
+                guard generation == self.gitGeneration, self.openDoc?.url.path == fileURL.path else { return }
+                self.isGitBusy = false
+                if let root {
+                    self.gitRootPath = root.path
+                    self.gitBranch = branch
+                    self.gitFileStatus = status
+                    self.gitFileInWorktree = inTree
+                    self.mergeOpenFileStatusIntoLibraryMap(documentID: docID, status: status)
+                    if !inTree, let msg = self.statusMessage, msg.hasPrefix("Opened") || msg.hasPrefix("Restored") {
+                        if !msg.contains("worktree") {
+                            self.statusMessage = msg + " · git: \(branch ?? "repo") (file outside worktree)"
+                        }
+                    }
+                } else {
+                    self.gitRootPath = nil
+                    self.gitBranch = nil
+                    self.gitFileStatus = .unknown
+                    self.gitFileInWorktree = false
+                    self.gitStatusByDocumentID.removeValue(forKey: docID)
+                    if let msg = self.statusMessage, (msg.hasPrefix("Opened") || msg.hasPrefix("Restored")), !msg.contains("git") {
+                        self.statusMessage = msg + " · not a git repository"
+                    }
+                }
+            }
+        }
+    }
+
+    private func mergeOpenFileStatusIntoLibraryMap(documentID: String, status: GitFileStatus) {
+        var map = gitStatusByDocumentID
+        if status.isChanged {
+            map[documentID] = status
+        } else {
+            map.removeValue(forKey: documentID)
+        }
+        gitStatusByDocumentID = map
+    }
+
+    /// Scan all library documents for git porcelain status (sidebar badges).
+    func refreshLibraryGitStatuses() {
+        libraryGitGeneration &+= 1
+        let generation = libraryGitGeneration
+        let docs = documents
+        guard !docs.isEmpty else {
+            gitStatusByDocumentID = [:]
+            return
+        }
+
+        Task.detached(priority: .utility) { [gitService] in
+            // Group docs by discovered git root so we run porcelain once per repo.
+            var rootCache: [String: URL?] = [:]
+            var relByDocID: [String: (rootPath: String, rel: String)] = [:]
+
+            for doc in docs {
+                let dir = doc.url.deletingLastPathComponent().path
+                let root: URL?
+                if let cached = rootCache[dir] {
+                    root = cached
+                } else {
+                    let found = gitService.findGitRoot(startingAt: doc.url)
+                    rootCache[dir] = found
+                    root = found
+                }
+                guard let root,
+                      let rel = gitService.relativePath(fileURL: doc.url, repoRoot: root)
+                else { continue }
+                relByDocID[doc.id] = (root.path, rel)
+            }
+
+            let uniqueRoots = Set(relByDocID.values.map(\.rootPath))
+            var statusByRootRel: [String: [String: GitFileStatus]] = [:]
+            for rootPath in uniqueRoots {
+                let root = URL(fileURLWithPath: rootPath)
+                statusByRootRel[rootPath] = gitService.statusMap(repoRoot: root)
+            }
+
+            var result: [String: GitFileStatus] = [:]
+            for (docID, pair) in relByDocID {
+                if let status = statusByRootRel[pair.rootPath]?[pair.rel], status.isChanged {
+                    result[docID] = status
+                }
+            }
+
+            await MainActor.run {
+                guard generation == self.libraryGitGeneration else { return }
+                // Prefer live open-file status if fresher.
+                if let open = self.openDoc, self.gitFileStatus.isChanged {
+                    result[open.id] = self.gitFileStatus
+                } else if let open = self.openDoc, !self.gitFileStatus.isChanged {
+                    result.removeValue(forKey: open.id)
+                }
+                self.gitStatusByDocumentID = result
+            }
+        }
+    }
+
+    /// Save if dirty before stage/commit. Returns false if user cancels or save fails.
+    @discardableResult
+    func prepareGitMutation() -> Bool {
+        guard openDoc != nil else { return false }
+        if isDirty {
+            let alert = NSAlert()
+            alert.messageText = "Save before git?"
+            alert.informativeText = "Unsaved edits must be written to disk before staging or committing."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Save")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return false }
+            saveDocument()
+            if isDirty { return false }
+        }
+        return true
+    }
+
+    func stageCurrentFile() {
+        guard prepareGitMutation(), let doc = openDoc, let rootPath = gitRootPath else { return }
+        let root = URL(fileURLWithPath: rootPath)
+        guard let rel = gitService.relativePath(fileURL: doc.url, repoRoot: root) else {
+            statusMessage = "File is outside the git repository"
+            return
+        }
+        gitGeneration &+= 1
+        let generation = gitGeneration
+        isGitBusy = true
+        Task.detached(priority: .userInitiated) { [gitService] in
+            do {
+                try gitService.stage(repoRoot: root, pathRelativeToRoot: rel)
+                await MainActor.run {
+                    guard generation == self.gitGeneration else { return }
+                    self.isGitBusy = false
+                    self.statusMessage = "Staged · \(doc.fileName)"
+                    self.refreshGitState()
+                    self.refreshLibraryGitStatuses()
+                }
+            } catch {
+                await MainActor.run {
+                    guard generation == self.gitGeneration else { return }
+                    self.isGitBusy = false
+                    self.statusMessage = "Stage failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    func unstageCurrentFile() {
+        guard let doc = openDoc, let rootPath = gitRootPath else { return }
+        let root = URL(fileURLWithPath: rootPath)
+        guard let rel = gitService.relativePath(fileURL: doc.url, repoRoot: root) else { return }
+        gitGeneration &+= 1
+        let generation = gitGeneration
+        isGitBusy = true
+        Task.detached(priority: .userInitiated) { [gitService] in
+            do {
+                try gitService.unstage(repoRoot: root, pathRelativeToRoot: rel)
+                await MainActor.run {
+                    guard generation == self.gitGeneration else { return }
+                    self.isGitBusy = false
+                    self.statusMessage = "Unstaged · \(doc.fileName)"
+                    self.refreshGitState()
+                    self.refreshLibraryGitStatuses()
+                }
+            } catch {
+                await MainActor.run {
+                    guard generation == self.gitGeneration else { return }
+                    self.isGitBusy = false
+                    self.statusMessage = "Unstage failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    /// Restore the open file to HEAD (index + worktree), then reload the buffer.
+    /// Use after save when the file is still modified relative to the last commit.
+    func discardGitChanges() {
+        guard let doc = openDoc, let rootPath = gitRootPath else { return }
+        guard isInGitRepo, gitFileInWorktree, !isGitBusy else { return }
+        if gitFileStatus.isUntracked {
+            statusMessage = "Untracked file — discard isn’t available (delete in Finder if needed)"
+            return
+        }
+        guard gitFileStatus.canDiscardToHEAD else { return }
+        let root = URL(fileURLWithPath: rootPath)
+        guard let rel = gitService.relativePath(fileURL: doc.url, repoRoot: root) else { return }
+
+        let alert = NSAlert()
+        alert.messageText = "Discard changes to “\(doc.fileName)”?"
+        alert.informativeText = isDirty
+            ? "Unsaved edits and all uncommitted changes will be permanently discarded. The file will match the last commit."
+            : "All uncommitted changes (staged and unstaged) will be permanently discarded. The file will match the last commit."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Discard Changes")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        gitGeneration &+= 1
+        let generation = gitGeneration
+        isGitBusy = true
+        Task.detached(priority: .userInitiated) { [gitService] in
+            do {
+                try gitService.discardToHEAD(repoRoot: root, pathRelativeToRoot: rel)
+                let diskText = try String(contentsOf: doc.url, encoding: .utf8)
+                await MainActor.run {
+                    guard generation == self.gitGeneration, self.openDoc?.id == doc.id else { return }
+                    self.isGitBusy = false
+                    self.parkedBuffers.removeValue(forKey: doc.id)
+                    self.bufferText = diskText
+                    self.originalText = diskText
+                    self.isDirty = false
+                    self.recomputeDirtyIDs()
+                    self.editorReloadNonce = UUID()
+                    if doc.kind == .canvas {
+                        self.outline = self.outlineParser.parse(diskText)
+                        self.compileCanvas()
+                    } else {
+                        self.markdownReloadToken = UUID()
+                    }
+                    self.touchOpenDocumentMetadata()
+                    self.statusMessage = "Discarded changes · \(doc.fileName)"
+                    self.refreshGitState()
+                    self.refreshLibraryGitStatuses()
+                }
+            } catch {
+                await MainActor.run {
+                    guard generation == self.gitGeneration else { return }
+                    self.isGitBusy = false
+                    self.statusMessage = "Discard failed: \(error.localizedDescription)"
+                    NSAlert(error: error).runModal()
+                }
+            }
+        }
+    }
+
+    func presentGitDiff() {
+        guard openDoc != nil else { return }
+        gitDiffShowsStaged = false
+        loadGitDiff()
+        showGitDiffSheet = true
+    }
+
+    func loadGitDiff() {
+        guard let doc = openDoc, let rootPath = gitRootPath else {
+            gitDiffText = ""
+            return
+        }
+        let root = URL(fileURLWithPath: rootPath)
+        guard let rel = gitService.relativePath(fileURL: doc.url, repoRoot: root) else {
+            gitDiffText = ""
+            return
+        }
+        let staged = gitDiffShowsStaged
+        let status = gitFileStatus
+        gitGeneration &+= 1
+        let generation = gitGeneration
+        isGitBusy = true
+        Task.detached(priority: .userInitiated) { [gitService] in
+            do {
+                var text = try gitService.diff(repoRoot: root, pathRelativeToRoot: rel, staged: staged)
+                if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if !staged, status.isUntracked {
+                        text = "Untracked file — stage it to start tracking.\nNo work-tree diff until the file is in the index."
+                    } else if staged, !status.isStaged {
+                        text = "Nothing staged for this file."
+                    } else {
+                        text = "No changes."
+                    }
+                }
+                await MainActor.run {
+                    guard generation == self.gitGeneration else { return }
+                    self.isGitBusy = false
+                    self.gitDiffText = text
+                }
+            } catch {
+                await MainActor.run {
+                    guard generation == self.gitGeneration else { return }
+                    self.isGitBusy = false
+                    self.gitDiffText = "Could not load diff:\n\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    func presentGitCommit() {
+        guard prepareGitMutation() else { return }
+        refreshGitState()
+        // Allow sheet open even if not staged yet — commit action will stage if needed after re-check
+        showGitCommitSheet = true
+    }
+
+    func commitCurrentFile() {
+        let message = gitCommitMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty else {
+            statusMessage = "Enter a commit message"
+            return
+        }
+        guard prepareGitMutation(), let doc = openDoc, let rootPath = gitRootPath else { return }
+        let root = URL(fileURLWithPath: rootPath)
+        guard let rel = gitService.relativePath(fileURL: doc.url, repoRoot: root) else { return }
+
+        gitGeneration &+= 1
+        let generation = gitGeneration
+        isGitBusy = true
+        let needsStage = !gitFileStatus.isStaged && (gitFileStatus.hasWorkTreeChanges || gitFileStatus.isUntracked)
+
+        Task.detached(priority: .userInitiated) { [gitService] in
+            do {
+                if needsStage {
+                    try gitService.stage(repoRoot: root, pathRelativeToRoot: rel)
+                }
+                // Re-check: commit requires index changes
+                let status = gitService.fileStatus(repoRoot: root, pathRelativeToRoot: rel)
+                guard status.isStaged else {
+                    await MainActor.run {
+                        guard generation == self.gitGeneration else { return }
+                        self.isGitBusy = false
+                        self.statusMessage = "Nothing to commit for this file"
+                    }
+                    return
+                }
+                try gitService.commit(repoRoot: root, message: message)
+                await MainActor.run {
+                    guard generation == self.gitGeneration else { return }
+                    self.isGitBusy = false
+                    self.gitCommitMessage = ""
+                    self.showGitCommitSheet = false
+                    self.statusMessage = "Committed · \(doc.fileName)"
+                    self.refreshGitState()
+                    self.refreshLibraryGitStatuses()
+                }
+            } catch {
+                await MainActor.run {
+                    guard generation == self.gitGeneration else { return }
+                    self.isGitBusy = false
+                    self.statusMessage = "Commit failed: \(error.localizedDescription)"
+                }
+            }
         }
     }
 
@@ -1058,7 +1686,7 @@ final class AppModel: ObservableObject {
         canvasError = nil
         isCompiling = false
         if isDesignMode {
-            statusMessage = "Preview unlocked — click text to edit"
+            statusMessage = "Editing in preview — click text, then Save"
         } else if isDirty {
             statusMessage = "Canvas rendered · unsaved changes"
         } else {

@@ -296,6 +296,7 @@ private struct ProjectSection: View {
 // MARK: - Tree nodes
 
 private struct TreeNodeView: View {
+    @EnvironmentObject private var app: AppModel
     let node: LibraryTreeNode
     let projectName: String
 
@@ -311,7 +312,11 @@ private struct TreeNodeView: View {
                 projectName: projectName
             )
         case .file(let doc):
-            DocumentRow(doc: doc)
+            DocumentRow(
+                doc: doc,
+                isUnsaved: app.hasUnsavedEdits(forDocumentID: doc.id),
+                gitStatus: app.gitStatus(forDocumentID: doc.id)
+            )
                 .tag(doc.id)
                 .contextMenu {
                     Button {
@@ -384,12 +389,23 @@ private struct FolderSection: View {
 
 private struct DocumentRow: View {
     let doc: WorkingDocument
+    var isUnsaved: Bool = false
+    var gitStatus: GitFileStatus? = nil
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .abbreviated
         return f
     }()
+
+    private var isGitChanged: Bool { gitStatus?.isChanged == true }
+
+    private var badgeColor: Color {
+        guard let gitStatus else { return .secondary }
+        if gitStatus.isUntracked { return .green }
+        if gitStatus.isStaged && !gitStatus.hasWorkTreeChanges { return .indigo }
+        return .orange
+    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -399,19 +415,44 @@ private struct DocumentRow: View {
                 .frame(width: 16)
 
             Text(doc.displayTitle)
-                .font(.callout)
+                .font(.callout.weight((isUnsaved || isGitChanged) ? .semibold : .regular))
                 .lineLimit(1)
                 .truncationMode(.tail)
 
             Spacer(minLength: 6)
 
-            Text(Self.relativeFormatter.localizedString(for: doc.modifiedAt, relativeTo: Date()))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
+            // Priority: unsaved buffer → orange dot; else git letter; else relative date.
+            if isUnsaved {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 7, height: 7)
+                    .help(isGitChanged
+                          ? "Unsaved changes (also \(gitStatus?.capsuleTitle ?? "modified") in git)"
+                          : "Unsaved changes")
+                    .accessibilityLabel("Unsaved")
+            } else if let badge = gitStatus?.sidebarBadge {
+                Text(badge)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(badgeColor)
+                    .frame(minWidth: 12, alignment: .trailing)
+                    .help(gitStatus?.sidebarHelp ?? "Git changes")
+                    .accessibilityLabel(gitStatus?.capsuleTitle ?? "Modified")
+            } else {
+                Text(Self.relativeFormatter.localizedString(for: doc.modifiedAt, relativeTo: Date()))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
         }
         .padding(.vertical, 2)
-        .accessibilityLabel("\(doc.displayTitle), \(doc.kind.title)")
+        .accessibilityLabel(accessibilityText)
         .help(doc.relativePath == doc.fileName ? doc.urlPath : "\(doc.projectName)/\(doc.relativePath)")
+    }
+
+    private var accessibilityText: String {
+        var parts = ["\(doc.displayTitle), \(doc.kind.title)"]
+        if isUnsaved { parts.append("unsaved") }
+        if let label = gitStatus?.capsuleTitle { parts.append(label) }
+        return parts.joined(separator: ", ")
     }
 }

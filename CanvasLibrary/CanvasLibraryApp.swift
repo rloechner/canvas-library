@@ -82,7 +82,7 @@ struct CanvasLibraryApp: App {
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(appModel.openDoc == nil || !appModel.isDirty)
 
-                Button("Revert Changes") {
+                Button("Revert Unsaved Changes") {
                     appModel.revertDocument()
                 }
                 // No ⌘⇧Z — that chord is system Redo / Monaco redo.
@@ -93,6 +93,49 @@ struct CanvasLibraryApp: App {
                 }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
                 .disabled(appModel.openDoc == nil)
+
+                Divider()
+
+                Button("Show Git Diff…") {
+                    appModel.presentGitDiff()
+                }
+                .disabled(appModel.openDoc == nil || !appModel.isInGitRepo || !appModel.gitFileInWorktree)
+
+                Button("Discard Git Changes…") {
+                    appModel.discardGitChanges()
+                }
+                .disabled(appModel.openDoc == nil || !appModel.canDiscardGitChanges)
+
+                Button(appModel.canUnstageCurrentFile ? "Unstage File" : "Stage File") {
+                    if appModel.canUnstageCurrentFile {
+                        appModel.unstageCurrentFile()
+                    } else {
+                        appModel.stageCurrentFile()
+                    }
+                }
+                .disabled(appModel.openDoc == nil || !appModel.isInGitRepo || appModel.isGitBusy
+                          || (!appModel.canUnstageCurrentFile && !appModel.canStageCurrentFile))
+
+                Button("Commit File…") {
+                    appModel.presentGitCommit()
+                }
+                .disabled(appModel.openDoc == nil || !appModel.canCommitCurrentFile)
+            }
+
+            CommandGroup(replacing: .importExport) {
+                Button("Export as PDF…") {
+                    appModel.exportPDF()
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(appModel.openDoc == nil || appModel.isExportingPDF)
+            }
+
+            CommandGroup(replacing: .printItem) {
+                Button("Print…") {
+                    appModel.printDocument()
+                }
+                .keyboardShortcut("p", modifiers: .command)
+                .disabled(appModel.openDoc == nil || appModel.isExportingPDF)
             }
         }
 

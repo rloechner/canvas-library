@@ -47,6 +47,14 @@ struct ContentView: View {
             FirstLaunchView()
                 .environmentObject(app)
         }
+        .sheet(isPresented: $app.showGitDiffSheet) {
+            GitDiffSheet()
+                .environmentObject(app)
+        }
+        .sheet(isPresented: $app.showGitCommitSheet) {
+            GitCommitSheet()
+                .environmentObject(app)
+        }
     }
 
     @ToolbarContentBuilder
@@ -125,6 +133,16 @@ struct ContentView: View {
                                 .foregroundStyle(.orange)
                                 .clipShape(Capsule())
                         }
+                        if let gitLabel = app.gitFileStatusLabel {
+                            Text(gitLabel)
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.indigo.opacity(0.14))
+                                .foregroundStyle(.indigo)
+                                .clipShape(Capsule())
+                                .help("Git status for this file")
+                        }
                     }
                     Text(pathSubtitle(for: doc))
                         .font(.caption)
@@ -135,6 +153,85 @@ struct ContentView: View {
             }
 
             Spacer(minLength: 8)
+
+            // Buffer dirty: Save + Revert (last saved on disk)
+            if app.isDirty {
+                Button {
+                    app.revertDocument()
+                } label: {
+                    Label("Revert", systemImage: "arrow.uturn.backward")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Discard unsaved edits and restore the last saved version")
+
+                Button {
+                    app.saveDocument()
+                } label: {
+                    Label("Save", systemImage: "square.and.arrow.down.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .help("Save to disk (⌘S)")
+                .keyboardShortcut("s", modifiers: .command)
+            }
+
+            if app.isInGitRepo {
+                HStack(spacing: 4) {
+                    Button {
+                        app.presentGitDiff()
+                    } label: {
+                        Label("Diff", systemImage: "doc.text.magnifyingglass")
+                    }
+                    .help(app.gitFileInWorktree
+                          ? "Show git diff for this file"
+                          : "Repo linked, but this file is outside the worktree (e.g. Cursor cache)")
+                    .disabled(!app.gitFileInWorktree)
+
+                    // After save: file may still be modified vs HEAD — offer discard.
+                    if app.canDiscardGitChanges {
+                        Button {
+                            app.discardGitChanges()
+                        } label: {
+                            Label("Discard", systemImage: "arrow.counterclockwise")
+                        }
+                        .help("Discard uncommitted changes and restore the last commit")
+                        .disabled(app.isGitBusy)
+                    }
+
+                    if app.canUnstageCurrentFile {
+                        Button {
+                            app.unstageCurrentFile()
+                        } label: {
+                            Label("Unstage", systemImage: "minus.circle")
+                        }
+                        .help("Unstage this file")
+                        .disabled(app.isGitBusy)
+                    } else {
+                        Button {
+                            app.stageCurrentFile()
+                        } label: {
+                            Label("Stage", systemImage: "plus.circle")
+                        }
+                        .help(app.gitFileInWorktree
+                              ? "Stage this file"
+                              : "File is outside the git worktree — add a real project folder to track it")
+                        .disabled(app.isGitBusy || !app.canStageCurrentFile)
+                    }
+
+                    Button {
+                        app.presentGitCommit()
+                    } label: {
+                        Label("Commit", systemImage: "checkmark.circle")
+                    }
+                    .help(app.gitFileInWorktree
+                          ? "Commit this file"
+                          : "File is outside the git worktree")
+                    .disabled(app.isGitBusy || !app.canCommitCurrentFile)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
 
             HStack(spacing: 4) {
                 Button { app.goPrev() } label: {
@@ -160,15 +257,15 @@ struct ContentView: View {
                     set: { app.setDesignMode($0) }
                 )) {
                     Label(
-                        app.isDesignMode ? "Unlocked" : "Unlock",
-                        systemImage: app.isDesignMode ? "lock.open.fill" : "lock.fill"
+                        app.isDesignMode ? "Editing preview" : "Edit in preview",
+                        systemImage: app.isDesignMode ? "pencil.and.outline" : "hand.tap"
                     )
                 }
                 .toggleStyle(.button)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .tint(app.isDesignMode ? .blue : nil)
-                .help("Unlock preview to click and edit text in the canvas")
+                .help("Click text in the live preview to edit source (then Save)")
             }
 
         }
@@ -246,30 +343,8 @@ struct ContentView: View {
     }
 
     private var canvasPreviewPane: some View {
+        // No full-width unlock banner — header toggle + status bar carry “editing preview”.
         VStack(spacing: 0) {
-            if app.isDesignMode {
-                HStack(spacing: 8) {
-                    Image(systemName: "lock.open.fill")
-                        .foregroundStyle(.white)
-                    Text("Preview unlocked — click text to edit. Enter commits a field · Esc cancels.")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.white)
-                    Spacer()
-                    if app.isDirty {
-                        Text("Unsaved")
-                            .font(.caption2.weight(.bold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(.white.opacity(0.2))
-                            .clipShape(Capsule())
-                            .foregroundStyle(.white)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.blue.gradient)
-            }
-
             ZStack {
                 CanvasPreviewView(
                     hostURL: app.canvasHostURL,
@@ -331,18 +406,48 @@ struct ContentView: View {
                     .frame(width: 6, height: 6)
                     .accessibilityLabel("Unsaved changes")
                     .help("Unsaved changes")
+            } else if app.gitFileStatus.isChanged {
+                Circle()
+                    .fill(Color.indigo.opacity(0.85))
+                    .frame(width: 6, height: 6)
+                    .accessibilityLabel(app.gitFileStatusLabel ?? "Modified")
+                    .help(app.gitFileStatusLabel.map { "Git: \($0)" } ?? "Uncommitted changes")
             } else if app.openDoc != nil {
                 Circle()
                     .fill(Color.green.opacity(0.75))
                     .frame(width: 6, height: 6)
                     .accessibilityLabel("Saved")
-                    .help("Saved")
+                    .help(app.isInGitRepo && app.gitFileInWorktree ? "Saved · matches git" : "Saved")
             }
 
             Text(primaryStatusText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+
+            if app.isInGitRepo, let branch = app.gitBranch {
+                Text("·")
+                    .foregroundStyle(.quaternary)
+                Label(branch, systemImage: "arrow.triangle.branch")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .help({
+                        var h = app.gitRootPath.map { "Git: \($0)" } ?? "Git"
+                        if !app.gitFileInWorktree {
+                            h += " — this file is outside the worktree (Cursor cache paths often are). Add your real project folder as a library space to stage/commit canvases from disk."
+                        } else if let label = app.gitFileStatusLabel {
+                            h += " · \(label)"
+                        }
+                        return h
+                    }())
+            }
+
+            if app.isGitBusy {
+                ProgressView()
+                    .controlSize(.small)
+                    .help("Git…")
+            }
 
             Spacer(minLength: 8)
 
@@ -414,11 +519,22 @@ struct ContentView: View {
             .disabled(app.openDoc == nil || app.isFormatting)
             .help("Format document (⌥⌘F)")
 
-            Button { app.revertDocument() } label: {
-                Label("Revert", systemImage: "arrow.uturn.backward")
+            Button {
+                if app.isDirty {
+                    app.revertDocument()
+                } else if app.canDiscardGitChanges {
+                    app.discardGitChanges()
+                }
+            } label: {
+                Label(
+                    app.isDirty ? "Revert" : "Discard",
+                    systemImage: app.isDirty ? "arrow.uturn.backward" : "arrow.counterclockwise"
+                )
             }
-            .disabled(app.openDoc == nil || !app.isDirty)
-            .help("Discard unsaved changes")
+            .disabled(app.openDoc == nil || (!app.isDirty && !app.canDiscardGitChanges))
+            .help(app.isDirty
+                  ? "Discard unsaved edits (restore last save)"
+                  : "Discard uncommitted git changes (restore last commit)")
 
             Button { app.saveDocument() } label: {
                 Label("Save", systemImage: "square.and.arrow.down")
@@ -426,6 +542,18 @@ struct ContentView: View {
             .disabled(app.openDoc == nil || !app.isDirty)
             .keyboardShortcut("s", modifiers: .command)
             .help("Save to disk (⌘S)")
+
+            Button { app.exportPDF() } label: {
+                Label("Export PDF", systemImage: "doc.richtext")
+            }
+            .disabled(app.openDoc == nil || app.isExportingPDF)
+            .help("Export current document as PDF (⇧⌘E)")
+
+            Button { app.printDocument() } label: {
+                Label("Print", systemImage: "printer")
+            }
+            .disabled(app.openDoc == nil || app.isExportingPDF)
+            .help("Print current document (⌘P)")
 
             Button { app.copyBuffer() } label: {
                 Label("Copy", systemImage: "doc.on.doc")

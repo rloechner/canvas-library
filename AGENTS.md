@@ -12,7 +12,7 @@ Context for humans and AI agents working on this repo. **Read this first** after
 | Team | `44N969GC55` (Ryan Loechner) |
 | License | MIT |
 | Platform | macOS 14+, SwiftUI |
-| Current release | **v1.1.0** (see GitHub Releases for DMG) |
+| Current release | **v1.2.0** (see GitHub Releases for DMG) |
 
 Independent Cursor companion — **not** affiliated with Anysphere. Do not ship Cursor’s proprietary `canvas-runtime.esm.js` (gitignored; see `THIRD_PARTY.md`).
 
@@ -100,11 +100,43 @@ Dirty navigation: Save / Don’t Save / Cancel before switching docs.
 | `hiddenProjects` / `excludedFolders` | Hide without deleting |
 | `fontSize` / `showLineNumbers` | Editor prefs |
 
+### Unsaved multi-doc buffers
+
+- Switching documents **parks** dirty buffers (no discard prompt).
+- `dirtyDocumentIDs` + orange **dot** on sidebar rows.
+- Returning to a parked doc restores unsaved text.
+- Save clears parked state for that path.
+
+### Git
+
+Thin shell-out via system `git` (`Services/GitService.swift` + `Views/GitSheets.swift`):
+
+- Root: walk up from file, **or** decode Cursor `~/.cursor/projects/<Users-…>` → real workspace and use that repo  
+- If file is **outside** worktree (Cursor cache): show branch, disable stage/commit/discard with clear help text  
+- Prefer adding the **real project folder** as a library space so canvases on disk track with git  
+- Header: status capsule + Diff / **Discard** / Stage|Unstage / Commit; status bar: branch  
+- Dirty buffer → Save before stage/commit  
+- **Two different “undo”s** (do not conflate):
+  - **Revert** — discard *unsaved buffer* edits → last save on disk (`isDirty`)
+  - **Discard** — `git restore` to HEAD (staged + worktree) after save when still modified (`canDiscardGitChanges`)
+- Sidebar: orange **dot** = unsaved buffer; git letter badge **M/A/U/D…** when committed status is dirty (`gitStatusByDocumentID`, refreshed after scan/save/stage/commit/discard)
+- Diff sheet: footer actions for Discard / Stage / Commit  
+
+**Not in v1:** push/pull, branch switch, multi-file staging, history, force ops.
+
+### PDF export & print
+
+- Toolbar **Export PDF** / **Print**, File menu **Export as PDF…** (⇧⌘E) / **Print…** (⌘P)
+- Shared pipeline: `AppModel.renderCurrentDocumentPDF()` → `PDFExporter` (window-hosted `WKWebView` + `createPDF`)
+- Markdown: print-styled HTML (`MarkdownRenderer` `forPrint`); canvas: preview host if ready (longer settle), else monospaced source dump
+- Print: render PDF data → `PDFKit` `PDFDocument.printOperation` system panel
+- Dirty buffer: Save & Continue / Continue with Buffer / Cancel
+
 ### Known gaps / dead code
 
 - `OutlineSidebar.swift` is empty; outline parse still runs for canvas but jump-to-line is not fully wired.
 - `recentDocuments` has no UI.
-- No filesystem watcher — external edits need Rescan.
+- No filesystem watcher — external edits need Rescan; open-file git status refreshes on open/save/stage/commit/discard; library badges refresh after scan + those mutations.
 - Scanner only picks `*.canvas.tsx` + md; Open panel may open plain `.tsx` as canvas.
 
 ## Build & release

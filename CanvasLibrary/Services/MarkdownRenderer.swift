@@ -8,14 +8,23 @@
 import Foundation
 
 enum MarkdownRenderer {
-    static func htmlDocument(from markdown: String, isDark: Bool) -> String {
+    /// - Parameter forPrint: light paper styling + `@page` margins for PDF/print export.
+    static func htmlDocument(from markdown: String, isDark: Bool, forPrint: Bool = false) -> String {
         let body = renderBody(markdown)
-        let bg = isDark ? "#1e1e1e" : "#ffffff"
-        let fg = isDark ? "#e4e4e4" : "#1a1a1a"
-        let muted = isDark ? "#9a9a9a" : "#666666"
-        let codeBg = isDark ? "#2a2a2a" : "#f4f4f5"
-        let border = isDark ? "#333" : "#e5e5e5"
-        let link = isDark ? "#6cb6ff" : "#0969da"
+        // Print/PDF always uses a light paper theme for readability.
+        let printMode = forPrint
+        let dark = isDark && !printMode
+        let bg = dark ? "#1e1e1e" : "#ffffff"
+        let fg = dark ? "#e4e4e4" : "#1a1a1a"
+        let muted = dark ? "#9a9a9a" : "#666666"
+        let codeBg = dark ? "#2a2a2a" : "#f4f4f5"
+        let border = dark ? "#333" : "#e5e5e5"
+        let link = dark ? "#6cb6ff" : "#0969da"
+        let pageCSS = printMode
+            ? "@page { margin: 0.6in; size: letter; }\n          * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }"
+            : ""
+        let contentPad = printMode ? "0" : "28px 36px 48px"
+        let contentMax = printMode ? "none" : "820px"
 
         return """
         <!DOCTYPE html>
@@ -24,14 +33,15 @@ enum MarkdownRenderer {
         <meta charset="utf-8"/>
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
         <style>
-          :root { color-scheme: \(isDark ? "dark" : "light"); }
+          \(pageCSS)
+          :root { color-scheme: \(dark ? "dark" : "light"); }
           html, body {
             margin: 0; padding: 0;
             background: \(bg); color: \(fg);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            font-size: 14px; line-height: 1.55;
+            font-size: \(printMode ? "11pt" : "14px"); line-height: 1.55;
           }
-          .content { padding: 28px 36px 48px; max-width: 820px; }
+          .content { padding: \(contentPad); max-width: \(contentMax); }
           h1 { font-size: 1.75rem; font-weight: 650; margin: 0 0 0.6em; }
           h2 { font-size: 1.35rem; font-weight: 650; margin: 1.4em 0 0.5em; }
           h3 { font-size: 1.1rem; font-weight: 600; margin: 1.2em 0 0.4em; }

@@ -158,7 +158,7 @@ Third-party components and Cursor runtime notes: **[THIRD_PARTY.md](./THIRD_PART
 
 ## Status
 
-**v1.1.0** — user-controlled library, first-launch setup, sidebar layout fix, Both / Canvases / Markdown filter. Core loop: library → preview → unlock-edit (canvas) → source edit → save.
+**v1.2.0** — current-file git (diff / stage / commit / discard), sidebar M/U badges, PDF export & print. Core loop: library → preview → unlock-edit (canvas) → source edit → save → optional commit.
 
 ---
 
