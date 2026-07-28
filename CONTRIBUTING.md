@@ -15,7 +15,9 @@ If you’re unsure whether an idea fits, open an issue first.
 
 1. **macOS 14+**, **Xcode 15+**
 2. **Node.js** with `npx` on your `PATH` (canvas preview uses esbuild)
-3. Optional but recommended: **Cursor** installed (canvas runtime fallback)
+3. Optional: **Cursor** installed (canvas runtime fallback / optional library space)
+
+For product architecture and agent-oriented notes, see **[AGENTS.md](./AGENTS.md)**.
 
 ```bash
 git clone git@github.com:rloechner/canvas-library.git

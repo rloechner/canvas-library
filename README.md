@@ -34,10 +34,9 @@ Canvas Library treats those files as a **working library**:
 | **Markdown preview** | Local HTML preview |
 | **Unlock preview** | Click text in a canvas to edit; changes write through to source |
 | **Source** | Monaco editor (TSX / Markdown) |
-| **Outline** | Structure sidebar for the open document |
 | **Format** | Prettier for TSX when Node is available; light normalize for MD |
 | **Save / Revert** | Write to disk or discard unsaved changes |
-| **Custom spaces** | Add extra folders beyond the default Cursor scan |
+| **First launch** | Pick folders (or optional Cursor canvases / start empty) |
 | **Open with** | Open `.tsx` / `.md` files into the library |
 
 ## Requirements
@@ -47,7 +46,7 @@ Canvas Library treats those files as a **working library**:
 | **macOS 14+** | Deployment target 14.0 |
 | **Xcode 15+** | To build from source |
 | **Node.js / npx** | Canvas compile uses `npx esbuild` |
-| **Cursor (recommended)** | Fallback source for the canvas runtime if not bundled |
+| **Cursor (optional)** | Canvas runtime fallback; optional “Add Cursor Canvases” space |
 
 ### Canvas runtime
 
@@ -111,7 +110,6 @@ If the repo lives under **iCloud Desktop & Documents**, codesign can fail with *
 | ⌘R | Reload preview |
 | ⌥⌘F | Format document |
 | ⌘S | Save |
-| ⇧⌘Z | Revert unsaved changes |
 | ⇧⌘R | Rescan library |
 | ⇧⌘C | Copy source |
 
@@ -121,15 +119,16 @@ If the repo lives under **iCloud Desktop & Documents**, codesign can fail with *
 CanvasLibrary.xcodeproj
 CanvasLibrary/
   CanvasLibraryApp.swift
-  ContentView.swift
-  Models/           # documents, app state, library tree
-  Services/         # scanner, esbuild compile, format, rewrite
-  Views/            # sidebar, Monaco, canvas / markdown preview
+  ContentView.swift         # NavigationStack + HSplitView
+  Models/                   # AppModel, WorkingDocument, spaces, tree
+  Services/                 # scanner, esbuild compile, format, rewrite
+  Views/                    # sidebar, first launch, Monaco, previews
   Resources/
-    CanvasHost/     # host.html, shim, design-mode (+ optional runtime)
-    EditorHost/     # Monaco editor host
+    CanvasHost/             # host.html, shim, design-mode (+ optional runtime)
+    EditorHost/             # Monaco editor host
 Samples/
-scripts/            # release signing & notarization helpers
+scripts/                    # release signing & notarization helpers
+AGENTS.md                   # architecture notes for contributors / AI agents
 ```
 
 ## Contributing
@@ -142,6 +141,8 @@ Contributions are welcome — bug fixes, UX polish, docs, and focused features.
 4. **Never** commit Cursor’s proprietary runtime or secrets
 
 Please read **[CONTRIBUTING.md](./CONTRIBUTING.md)** before opening a PR.
+
+For architecture, UserDefaults keys, release flow, and known gaps, see **[AGENTS.md](./AGENTS.md)**.
 
 ## License
 
@@ -157,7 +158,7 @@ Third-party components and Cursor runtime notes: **[THIRD_PARTY.md](./THIRD_PART
 
 ## Status
 
-Steady **v1**: library → preview → unlock-edit → save works as a Cursor companion. Built for people who live in canvases and want them one keystroke away.
+**v1.1.0** — user-controlled library, first-launch setup, sidebar layout fix, Both / Canvases / Markdown filter. Core loop: library → preview → unlock-edit (canvas) → source edit → save.
 
 ---
 
