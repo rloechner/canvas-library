@@ -137,8 +137,11 @@ Release builds must use **DerivedData under `/tmp`** (script default) to avoid i
 
 ## Quick “start here” for a new agent
 
-1. Read README + this file.  
-2. Skim `AppModel.swift` (spaces, open/save, compile).  
-3. Skim `ContentView.swift` + `LibrarySidebar.swift` + `FirstLaunchView.swift`.  
-4. Build with `/tmp/CanvasLibrary-DD`.  
-5. Ask the user before version bumps, releases, or destructive git history.
+1. Repo lives at `~/Documents/Apps/CanvasLibrary` (GitHub: `rloechner/canvas-library`).  
+2. Read README + this file.  
+3. Skim `AppModel.swift` (spaces, open/save, compile).  
+4. Skim `ContentView.swift` + `LibrarySidebar.swift` + `FirstLaunchView.swift`.  
+5. Build with `/tmp/CanvasLibrary-DD`.  
+6. Ask the user before version bumps, releases, or destructive git history.  
+
+**Naming:** product is **Canvas Library** / `CanvasLibrary` / `com.ryanloechner.canvaslibrary`. Do not reintroduce the old name **TSXPretty**. Service files named `TSXFormatter` etc. refer to TypeScript/TSX file format, not the product.

@@ -1,6 +1,6 @@
 //
 //  CanvasPreviewView.swift
-//  CanvasSpace
+//  Canvas Library
 //
 //  Canvas runtime host + optional design mode (unlock preview).
 //
@@ -8,7 +8,7 @@
 import SwiftUI
 import WebKit
 
-private let canvasScheme = "tsxpretty-canvas"
+private let canvasScheme = "canvaslibrary-canvas"
 
 struct CanvasPreviewView: NSViewRepresentable {
     let hostURL: URL?

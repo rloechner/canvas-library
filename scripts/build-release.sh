@@ -28,9 +28,9 @@ cd "$ROOT"
 
 TEAM_ID="44N969GC55"
 SIGN_IDENTITY="Developer ID Application: Ryan Loechner (44N969GC55)"
-SCHEME=""
+SCHEME="CanvasLibrary"
 PROJECT=""
-TARGET_NAME="TSXPretty"
+TARGET_NAME="CanvasLibrary"
 PRODUCT_DISPLAY_NAME="Canvas Library"
 DIST_DIR="${ROOT}/dist"
 # Keep intermediate builds outside iCloud Desktop/Documents — codesign rejects
@@ -52,17 +52,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Prefer CanvasLibrary.xcodeproj if present (product rename); else TSXPretty.xcodeproj.
 if [[ -d "${ROOT}/CanvasLibrary.xcodeproj" ]]; then
   PROJECT="${ROOT}/CanvasLibrary.xcodeproj"
-  SCHEME="CanvasLibrary"
-  TARGET_NAME="CanvasLibrary"
-elif [[ -d "${ROOT}/TSXPretty.xcodeproj" ]]; then
-  PROJECT="${ROOT}/TSXPretty.xcodeproj"
-  SCHEME="TSXPretty"
-  TARGET_NAME="TSXPretty"
 else
-  echo "error: no CanvasLibrary.xcodeproj or TSXPretty.xcodeproj found in ${ROOT}" >&2
+  echo "error: CanvasLibrary.xcodeproj not found in ${ROOT}" >&2
   exit 1
 fi
 

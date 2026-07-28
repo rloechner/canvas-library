@@ -1,6 +1,6 @@
 //
 //  AppModel.swift
-//  CanvasSpace
+//  Canvas Library
 //
 //  Working documents companion for Cursor canvases + markdown.
 //

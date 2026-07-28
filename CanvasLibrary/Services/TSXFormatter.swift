@@ -1,6 +1,6 @@
 //
 //  TSXFormatter.swift
-//  TSXPretty
+//  Canvas Library
 //
 //  Prefers Prettier (npx) when Node is available; falls back to a
 //  simple brace/tag-aware indent formatter.
@@ -26,7 +26,7 @@ struct TSXFormatter {
 
     private func runPrettier(_ source: String) -> String? {
         let tempDir = FileManager.default.temporaryDirectory
-        let inputURL = tempDir.appendingPathComponent("tsxpretty-\(UUID().uuidString).tsx")
+        let inputURL = tempDir.appendingPathComponent("canvaslibrary-\(UUID().uuidString).tsx")
         defer { try? FileManager.default.removeItem(at: inputURL) }
 
         do {

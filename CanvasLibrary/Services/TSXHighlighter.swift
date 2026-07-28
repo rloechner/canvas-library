@@ -1,6 +1,6 @@
 //
 //  TSXHighlighter.swift
-//  TSXPretty
+//  Canvas Library
 //
 //  Regex-driven syntax highlighter for TSX / JSX / TypeScript.
 //  Uses resolved sRGB colors (not dynamic system colors) so NSTextView

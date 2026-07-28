@@ -1,6 +1,6 @@
 //
 //  MarkdownPreviewView.swift
-//  CanvasSpace
+//  Canvas Library
 //
 
 import SwiftUI

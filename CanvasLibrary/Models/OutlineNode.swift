@@ -1,6 +1,6 @@
 //
 //  OutlineNode.swift
-//  TSXPretty
+//  Canvas Library
 //
 
 import Foundation

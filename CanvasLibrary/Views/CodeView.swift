@@ -1,6 +1,6 @@
 //
 //  CodeView.swift
-//  TSXPretty
+//  Canvas Library
 //
 
 import AppKit

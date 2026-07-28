@@ -1,6 +1,6 @@
 //
 //  MarkdownRenderer.swift
-//  CanvasSpace
+//  Canvas Library
 //
 //  Lightweight markdown → HTML for WKWebView preview.
 //

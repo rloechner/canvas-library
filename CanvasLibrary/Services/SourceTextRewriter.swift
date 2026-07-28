@@ -1,6 +1,6 @@
 //
 //  SourceTextRewriter.swift
-//  CanvasSpace
+//  Canvas Library
 //
 //  Maps in-preview text edits back into TSX/MD source.
 //

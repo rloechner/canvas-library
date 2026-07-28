@@ -1,6 +1,6 @@
 //
 //  ContentView.swift
-//  CanvasSpace
+//  Canvas Library
 //
 
 import AppKit

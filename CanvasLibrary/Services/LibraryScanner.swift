@@ -1,6 +1,6 @@
 //
 //  LibraryScanner.swift
-//  CanvasSpace
+//  Canvas Library
 //
 
 import Foundation

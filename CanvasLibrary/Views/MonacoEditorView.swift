@@ -1,6 +1,6 @@
 //
 //  MonacoEditorView.swift
-//  CanvasSpace
+//  Canvas Library
 //
 //  VS Code Monaco editor hosted in WKWebView — best-in-class TSX color coding.
 //

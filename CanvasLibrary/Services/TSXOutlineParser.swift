@@ -1,6 +1,6 @@
 //
 //  TSXOutlineParser.swift
-//  TSXPretty
+//  Canvas Library
 //
 //  Lightweight stack-based JSX tag scanner (not a full TS parser).
 //

@@ -1,6 +1,6 @@
 //
 //  OutlineSidebar.swift
-//  CanvasSpace
+//  Canvas Library
 //
 //  Legacy file kept so the Xcode project still compiles.
 //  Library navigation lives in LibrarySidebar.swift.

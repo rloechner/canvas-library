@@ -1,6 +1,6 @@
 //
 //  WorkingDocument.swift
-//  CanvasSpace (TSXPretty)
+//  Canvas Library
 //
 //  A working Cursor document: canvas or markdown.
 //

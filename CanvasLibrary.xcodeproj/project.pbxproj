@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		B01TSXPRETTYAPP000000001 /* CanvasLibraryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D62B1219DC4B12B25E3E21 /* CanvasLibraryApp.swift */; };
+		B01CANVASLIBRARYAPP000001 /* CanvasLibraryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D62B1219DC4B12B25E3E21 /* CanvasLibraryApp.swift */; };
 		B02CONTENTVIEW0000000001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82BC348BF3EB41FDA9FDD577 /* ContentView.swift */; };
 		B03APPMODEL0000000000001 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E3EC0A98B5741638AC321FB /* AppModel.swift */; };
 		B04OUTLINENODE0000000001 /* OutlineNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 670E51F48AE74B3EBFAE6414 /* OutlineNode.swift */; };
@@ -242,7 +242,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B01TSXPRETTYAPP000000001 /* CanvasLibraryApp.swift in Sources */,
+				B01CANVASLIBRARYAPP000001 /* CanvasLibraryApp.swift in Sources */,
 				B02CONTENTVIEW0000000001 /* ContentView.swift in Sources */,
 				B03APPMODEL0000000000001 /* AppModel.swift in Sources */,
 				B04OUTLINENODE0000000001 /* OutlineNode.swift in Sources */,
