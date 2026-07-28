@@ -10,6 +10,28 @@ Canvas Library is a macOS companion for [Cursor](https://cursor.com) canvases (`
 
 > **Not affiliated with Anysphere or Cursor.** Independent open-source project.
 
+## Screenshots
+
+Demo library content is **fictional** (Harbor Desk / Northstar) — see [`Samples/demo-library/`](./Samples/demo-library/).
+
+<p align="center">
+  <img src="docs/screenshots/canvas-preview.png" alt="Canvas Library — live canvas preview with project sidebar and git actions" width="900" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/library-markdown.png" alt="Canvas Library — markdown preview and nested library tree" width="900" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/pricing-canvas.png" alt="Canvas Library — second project canvas with untracked git badges" width="900" />
+</p>
+
+| Shot | What it shows |
+|------|----------------|
+| **Canvas preview** | Live `.canvas.tsx` render, project tree, Diff / Stage / Commit, **U** git badges |
+| **Markdown** | Markdown preview + nested folders under a library space |
+| **Pricing canvas** | Multi-project library (Harbor Desk + Northstar) |
+
 ---
 
 ## Why it exists
@@ -127,7 +149,9 @@ CanvasLibrary/
     CanvasHost/             # host.html, shim, design-mode (+ optional runtime)
     EditorHost/             # Monaco editor host
 Samples/
+  demo-library/             # fictional docs used in README screenshots
 scripts/                    # release signing & notarization helpers
+docs/screenshots/           # product shots (fake demo content only)
 AGENTS.md                   # architecture notes for contributors / AI agents
 ```
 
